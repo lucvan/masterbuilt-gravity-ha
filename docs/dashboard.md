@@ -1,8 +1,24 @@
 # Example dashboard
 
+> If you just want a working UI, install the companion [Masterbuilt Cook Card](https://github.com/lucvan/masterbuilt-cook-card) instead — it does all of this from a single device id, and can chart cooks that Recorder never saw. What follows is for building your own.
+
 [apexcharts-card](https://github.com/RomRider/apexcharts-card) configs for a live cook and a finished one, plus a staleness banner. Install apexcharts-card from HACS (Frontend) first.
 
 Replace `smoker` in the entity IDs with your own device's slug.
+
+## Simplest option: the built-in graph
+
+No custom cards needed. `hours_to_show` is fixed and always ends at now, so it cannot show a past cook — but for watching one in progress it is perfectly good:
+
+```yaml
+type: history-graph
+hours_to_show: 12
+fit_y_data: true
+entities:
+  - sensor.smoker_grill_temperature
+  - sensor.smoker_target_temperature
+  - sensor.smoker_probe_1_temperature
+```
 
 ## Live cook
 

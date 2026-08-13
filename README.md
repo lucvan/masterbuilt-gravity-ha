@@ -85,7 +85,9 @@ What Recorder cannot tell you is where one cook ends and the next begins, so tha
 | `sensor.<grill>_cook_start` | When the current cook began, from the cloud's own session record. Unknown when not cooking. Attributes carry the session `id` and snapshot count |
 | `sensor.<grill>_last_cook` | The previous completed cook, with a decimated series in attributes for charting. Fetched once when a cook ends, not polled |
 
-An example [apexcharts-card](https://github.com/RomRider/apexcharts-card) config is in [`docs/dashboard.md`](docs/dashboard.md).
+For a ready-made UI, install the companion **[Masterbuilt Cook Card](https://github.com/lucvan/masterbuilt-cook-card)** — it sizes the live chart to the cook, browses past cooks, and surfaces the staleness warning, with no YAML beyond a device id.
+
+To build your own instead, [`docs/dashboard.md`](docs/dashboard.md) has example configs using the built-in `history-graph` and [apexcharts-card](https://github.com/RomRider/apexcharts-card).
 
 ## Fetching any past cook
 
