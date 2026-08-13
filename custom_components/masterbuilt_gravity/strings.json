@@ -54,19 +54,33 @@
   "services": {
     "get_cook_history": {
       "name": "Get cook history",
-      "description": "Fetches a full cook from Masterbuilt's cloud, sampled roughly every 10 seconds. Returned as a service response; nothing is written to entity state.",
+      "description": "Returns a cook as chartable series. Reads Home Assistant's own recorded history when it covers the cook, and falls back to Masterbuilt's cloud when it does not. Returned as a response; nothing is written to entity state.",
       "fields": {
         "device_id": {
           "name": "Grill",
           "description": "Which grill to fetch a cook for."
         },
         "session_id": {
-          "name": "Session ID",
-          "description": "A specific cook to fetch. Leave empty for the most recent one."
+          "name": "Cook ID",
+          "description": "A specific cook to fetch. Leave empty for the most recent one. Use 'List cooks' to find IDs."
         },
         "max_points": {
           "name": "Maximum points",
           "description": "Thin each series to at most this many points. A long cook can be several thousand samples."
+        },
+        "source": {
+          "name": "Source",
+          "description": "Auto reads locally when recorded history covers the cook and uses the cloud otherwise. Local never leaves Home Assistant. Cloud always fetches from Masterbuilt, at roughly 10-second resolution."
+        }
+      }
+    },
+    "list_cooks": {
+      "name": "List cooks",
+      "description": "Lists every cook Masterbuilt's cloud still holds, newest first, including cooks from before Home Assistant knew about the grill. Returns IDs and timings only, no sample data.",
+      "fields": {
+        "device_id": {
+          "name": "Grill",
+          "description": "Which grill to list cooks for."
         }
       }
     }
@@ -88,7 +102,8 @@
       "error": { "name": "Error" },
       "last_reported": { "name": "Last reported" },
       "data_age": { "name": "Data age" },
-      "cook_history": { "name": "Current cook history" }
+      "cook_start": { "name": "Cook start" },
+      "last_cook": { "name": "Last cook" }
     },
     "binary_sensor": {
       "power": { "name": "Power" },

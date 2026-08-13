@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -156,8 +157,9 @@ async def async_setup_entry(
             entities.append(MasterbuiltSensor(coordinator, mac, desc))
         for desc in DIAGNOSTIC_SENSORS:
             entities.append(MasterbuiltFreshnessSensor(coordinator, mac, desc))
+        entities.append(MasterbuiltCookStartSensor(coordinator, mac))
         if coordinator.track_history:
-            entities.append(MasterbuiltCookHistorySensor(coordinator, mac))
+            entities.append(MasterbuiltLastCookSensor(coordinator, mac))
     async_add_entities(entities)
 
 
@@ -228,27 +230,64 @@ class MasterbuiltFreshnessSensor(MasterbuiltEntity, SensorEntity):
         return None if age is None else round(age)
 
 
-class MasterbuiltCookHistorySensor(MasterbuiltEntity, SensorEntity):
-    """Current-cook series, for charting without touching Recorder history.
+class MasterbuiltCookStartSensor(MasterbuiltEntity, SensorEntity):
+    """When the current cook began, per the cloud's own session record.
 
-    State is the number of recorded points; the series live in attributes as
-    ``[seconds_since_cook_start, value]`` pairs. The payload is bounded by
-    HISTORY_MAX_POINTS so it stays well inside Recorder's 16 KiB attribute
-    limit — see ``history.py`` for why that matters.
+    This is the one thing Recorder cannot work out for you. Every temperature
+    reading is already in the database; what is not is where one cook ends and
+    the next begins. Pair it with Recorder history to bound a chart, or with
+    ``relative_time()`` for an elapsed-time card.
+
+    Unknown when no cook is in progress.
     """
 
-    _attr_icon = "mdi:chart-line"
-    _attr_translation_key = "cook_history"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:timer-play-outline"
+    _attr_translation_key = "cook_start"
 
     def __init__(self, coordinator, mac: str) -> None:
-        super().__init__(coordinator, mac, "cook_history")
+        super().__init__(coordinator, mac, "cook_start")
 
     @property
-    def native_value(self) -> int:
-        cook = self.coordinator.cooks.get(self._mac)
-        return cook.point_count if cook else 0
+    def native_value(self) -> datetime | None:
+        start = (self.coordinator.cook.get(self._mac) or {}).get("start")
+        if not start:
+            return None
+        return datetime.fromtimestamp(start, tz=timezone.utc)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        cook = self.coordinator.cooks.get(self._mac)
-        return cook.as_attributes() if cook else None
+        cook = self.coordinator.cook.get(self._mac) or {}
+        if not cook:
+            return None
+        return {"session_id": cook.get("id"), "snapshot_count": cook.get("snapshotCount")}
+
+
+class MasterbuiltLastCookSensor(MasterbuiltEntity, SensorEntity):
+    """The previous completed cook, fetched from the cloud once when it ends.
+
+    Carries a decimated series in attributes so a dashboard can chart a finished
+    cook without a script. That is affordable precisely because it changes once
+    per cook — unlike a live series, which would rewrite its whole payload into
+    the ``states`` table on every poll.
+
+    For arbitrary older cooks, use the ``get_cook_history`` action instead.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:history"
+    _attr_translation_key = "last_cook"
+
+    def __init__(self, coordinator, mac: str) -> None:
+        super().__init__(coordinator, mac, "last_cook")
+
+    @property
+    def native_value(self) -> datetime | None:
+        end = (self.coordinator.last_cook.get(self._mac) or {}).get("end")
+        if not end:
+            return None
+        return datetime.fromtimestamp(end, tz=timezone.utc)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        return self.coordinator.last_cook.get(self._mac) or None

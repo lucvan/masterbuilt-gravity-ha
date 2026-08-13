@@ -76,67 +76,73 @@ If you previously built Fahrenheit template sensors to work around this, you can
 
 ## Charting the current cook
 
-`sensor.<grill>_current_cook_history` holds the cook so far. Its state is the point count; the data is in attributes:
+**Chart the temperature sensors directly.** Home Assistant's Recorder already stores every one of them, so there is no history sensor here duplicating that — a sensor holding a growing series in its attributes would rewrite that entire payload into the `states` table on every poll, which is how attribute-size problems start.
 
-```yaml
-cook_start: "2026-08-13T09:12:04+00:00"   # ISO-8601
-cook_end: null                             # set when the grill powers off
-active: true
-unit: "°F"
-series:
-  grill:  [[0, 78.0], [63, 141.5], ...]    # [seconds since cook_start, value]
-  target: [[0, 250.0], ...]
-  probe1: [[0, 41.0], ...]
-```
+What Recorder cannot tell you is where one cook ends and the next begins, so that part *is* an entity:
 
-Points are stored as offsets rather than timestamps to keep the payload small — the whole series is capped at 150 points per channel and decimates itself as a cook runs long, so it stays comfortably inside Recorder's 16 KiB attribute ceiling.
-
-A cook starts when the grill powers on and ends when it powers off. **While the shadow is stale, nothing is recorded** — a dropout shows as a gap rather than a flat line extended through a period nobody was actually measuring.
+| Entity | |
+|---|---|
+| `sensor.<grill>_cook_start` | When the current cook began, from the cloud's own session record. Unknown when not cooking. Attributes carry the session `id` and snapshot count |
+| `sensor.<grill>_last_cook` | The previous completed cook, with a decimated series in attributes for charting. Fetched once when a cook ends, not polled |
 
 An example [apexcharts-card](https://github.com/RomRider/apexcharts-card) config is in [`docs/dashboard.md`](docs/dashboard.md).
 
-## Fetching a whole cook
+## Fetching any past cook
 
-Masterbuilt's cloud keeps every cook at roughly 10-second resolution, server-side, and it survives Home Assistant restarts. That is far too much data to poll — an overnight cook is a few thousand samples and megabytes of JSON — so it is exposed as a service that returns a response rather than as entity state. Nothing is fetched until you ask, and nothing lands in Recorder.
+Masterbuilt's cloud keeps every cook the grill has ever run, at roughly 10-second resolution — including cooks from long before Home Assistant knew the grill existed. Two actions expose that, both returning responses rather than writing to entity state.
+
+**Find a cook:**
+
+```yaml
+action: masterbuilt_gravity.list_cooks
+data:
+  device_id: <your grill>
+response_variable: cooks
+```
+
+Returns `id`, `state`, `start`, `end` and `snapshot_count` per cook, newest first. Cheap — no sample data.
+
+**Fetch one:**
 
 ```yaml
 action: masterbuilt_gravity.get_cook_history
 data:
   device_id: <your grill>
-  max_points: 300      # thins each series; omit session_id for the latest cook
+  session_id: 8637642    # omit for the most recent cook
+  max_points: 300
 response_variable: cook
 ```
 
-Returns:
-
 ```yaml
-session:
-  id: 8637642
-  state: INACTIVE
-  start: 1786561848     # unix seconds
-  end: 1786592241
-  snapshot_count: 2633
+session: {id: 8637642, state: INACTIVE, start: 1786561848, end: 1786592241, snapshot_count: 2633}
+source: recorder         # or "cloud"
 unit: "°F"
 series:
-  grill:  [[0, 83.0], [89, 96.0], ...]   # [seconds since session start, value]
+  grill:  [[0, 83.0], [89, 96.0], ...]   # [seconds since cook start, value]
   target: [[0, 225.0], ...]
   probe1: [[0, 76.0], ...]
 ```
 
-Omit `session_id` for the most recent cook. Pass one from a previous response to fetch an older one — completed cooks stay available, snapshots included.
+### Where the data comes from
 
-A 2633-sample cook thinned to 300 points per series is about 14 KB.
+By default (`source: auto`) this **reads your own Recorder history when it covers the cook**, and only falls back to Masterbuilt's cloud when it does not — a cook that predates the integration, one that ran while Home Assistant was down, or one Recorder has since purged. The `source` field in the response tells you which was used.
+
+Force it either way with `source: local` or `source: cloud`. `local` never leaves Home Assistant; `cloud` always gives the finer ~10-second sampling.
+
+An 8-hour, 2633-sample cook thinned to 300 points per series is about 14 KB, against roughly 1.3 MB raw.
 
 ### Keeping Recorder tidy
 
-The history sensor's attributes are bounded but not tiny. If you don't need them in long-term history:
+`sensor.<grill>_last_cook` carries a series in its attributes. It only changes once per cook, so it costs one row rather than one per poll, but if you don't want it in long-term history:
 
 ```yaml
 recorder:
   exclude:
     entities:
-      - sensor.smoker_current_cook_history
+      - sensor.smoker_last_cook
 ```
+
+Excluding it does not affect the `get_cook_history` action.
 
 ## Writing setpoints
 

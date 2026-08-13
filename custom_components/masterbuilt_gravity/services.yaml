@@ -18,3 +18,20 @@ get_cook_history:
           min: 10
           max: 5000
           mode: box
+    source:
+      required: false
+      default: auto
+      selector:
+        select:
+          options:
+            - auto
+            - local
+            - cloud
+
+list_cooks:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: masterbuilt_gravity

@@ -1,12 +1,12 @@
 # Example dashboard
 
-An [apexcharts-card](https://github.com/RomRider/apexcharts-card) config for the current cook, plus a staleness banner. Install apexcharts-card from HACS (Frontend) first.
+[apexcharts-card](https://github.com/RomRider/apexcharts-card) configs for a live cook and a finished one, plus a staleness banner. Install apexcharts-card from HACS (Frontend) first.
 
 Replace `smoker` in the entity IDs with your own device's slug.
 
-## Current-cook chart
+## Live cook
 
-Reads the integration's `current_cook_history` attributes directly, so it does not depend on Recorder retention and needs no helper entities, templates, or external scripts.
+Reads the temperature sensors straight from Recorder — no helper entities, no templates, no history sensor in between.
 
 ```yaml
 type: custom:apexcharts-card
@@ -25,37 +25,27 @@ now:
 all_series_config:
   type: line
   curve: straight
+  extend_to: now
+  fill_raw: last
+  group_by:
+    duration: 1min
+    func: last
   show:
     legend_value: true
 series:
-  - entity: sensor.smoker_current_cook_history
+  - entity: sensor.smoker_grill_temperature
     name: Grill
     color: "#ff3b30"
     stroke_width: 5
-    data_generator: |
-      const a = entity.attributes;
-      if (!a.cook_start) return [];
-      const t0 = new Date(a.cook_start).getTime();
-      return ((a.series || {}).grill || []).map(p => [t0 + p[0] * 1000, p[1]]);
-  - entity: sensor.smoker_current_cook_history
+  - entity: sensor.smoker_target_temperature
     name: Target
     color: "#ffcc00"
     stroke_width: 2
-    data_generator: |
-      const a = entity.attributes;
-      if (!a.cook_start) return [];
-      const t0 = new Date(a.cook_start).getTime();
-      return ((a.series || {}).target || []).map(p => [t0 + p[0] * 1000, p[1]]);
-  - entity: sensor.smoker_current_cook_history
+  - entity: sensor.smoker_probe_1_temperature
     name: Probe 1
     color: "#32ade6"
     stroke_width: 4
-    data_generator: |
-      const a = entity.attributes;
-      if (!a.cook_start) return [];
-      const t0 = new Date(a.cook_start).getTime();
-      return ((a.series || {}).probe1 || []).map(p => [t0 + p[0] * 1000, p[1]]);
-apex_config:
+apex_config: &chart_style
   chart:
     height: 420
     background: transparent
@@ -89,21 +79,83 @@ apex_config:
     active: { filter: { type: none } }
   yaxis:
     decimalsInFloat: 0
-    title:
-      text: Temperature
-  xaxis:
-    type: datetime
 ```
 
-Three series only — grill, target, probe 1 — because overlapping probe lines make the chart unreadable at a glance. Probes 2–4 are in the series data if you want them; add another block. Hover and active fading are disabled so overlapping flat lines stay solid.
+Three series only — grill, target, probe 1 — because overlapping probe lines make the chart unreadable at a glance. Add more blocks for probes 2–4 if you want them. Hover and active fading are disabled so overlapping flat lines stay solid.
 
 ### About the time window
 
-`graph_span: 12h` is a fixed window. The chart will not auto-zoom to the exact cook duration.
+`graph_span: 12h` is a fixed window; the chart does not auto-zoom to the cook.
 
-If you previously ran a script that rewrote `apex_config.xaxis.min`/`max` on a timer to achieve auto-zoom, that is deliberately not reproduced here — an integration should not be editing your stored dashboard config behind your back, and the whole point of this version is that it runs without any external helper. Set `graph_span` to whatever suits your typical cook and use the chart's own toolbar to zoom.
+`sensor.smoker_cook_start` holds when the current cook began, so you can see the elapsed time on a card, but apexcharts-card cannot bind `graph_span` to an entity. If you previously ran a script that rewrote the stored dashboard config to set `xaxis.min`/`max` on a timer, that is deliberately not reproduced — set `graph_span` to suit your typical cook and use the chart toolbar to zoom.
 
 **Do not wrap this card in `config-template-card`** to make the span dynamic. It is a known way to make the chart disappear entirely.
+
+## Last completed cook
+
+`sensor.smoker_last_cook` carries the finished cook as offset series, so this chart needs no history query at all. Offsets are seconds from the cook's start, which makes the x-axis elapsed time — usually more useful than wall-clock for comparing cooks.
+
+```yaml
+type: custom:apexcharts-card
+graph_span: 24h
+header:
+  show: true
+  title: Last cook
+series:
+  - entity: sensor.smoker_last_cook
+    name: Grill
+    color: "#ff3b30"
+    stroke_width: 5
+    data_generator: |
+      const s = (entity.attributes.series || {}).grill || [];
+      const t0 = (entity.attributes.start || 0) * 1000;
+      return s.map(p => [t0 + p[0] * 1000, p[1]]);
+  - entity: sensor.smoker_last_cook
+    name: Target
+    color: "#ffcc00"
+    stroke_width: 2
+    data_generator: |
+      const s = (entity.attributes.series || {}).target || [];
+      const t0 = (entity.attributes.start || 0) * 1000;
+      return s.map(p => [t0 + p[0] * 1000, p[1]]);
+  - entity: sensor.smoker_last_cook
+    name: Probe 1
+    color: "#32ade6"
+    stroke_width: 4
+    data_generator: |
+      const s = (entity.attributes.series || {}).probe1 || [];
+      const t0 = (entity.attributes.start || 0) * 1000;
+      return s.map(p => [t0 + p[0] * 1000, p[1]]);
+apex_config: *chart_style
+```
+
+## Older cooks
+
+Anything further back is fetched on demand, including cooks from before Home Assistant knew about the grill. There is no card for this — a response-only action can't be called from Lovelace — so use *Developer Tools → Actions*, or a script.
+
+```yaml
+script:
+  export_cook:
+    sequence:
+      - action: masterbuilt_gravity.list_cooks
+        data:
+          device_id: !input grill
+        response_variable: cooks
+      - action: masterbuilt_gravity.get_cook_history
+        data:
+          device_id: !input grill
+          session_id: "{{ cooks.cooks[1].id }}"   # [0] is the newest
+          max_points: 500
+        response_variable: cook
+      - action: notify.persistent_notification
+        data:
+          message: >-
+            Cook {{ cook.session.id }} from {{ cook.source }}:
+            {{ cook.series.grill | length }} points,
+            peak {{ cook.series.grill | map(attribute=1) | max }}{{ cook.unit }}
+```
+
+`source` in the response tells you whether it came from your own Recorder or from Masterbuilt's cloud.
 
 ## Stale-data banner
 
@@ -137,6 +189,8 @@ entities:
     name: Target
   - entity: sensor.smoker_heat_intensity
     name: Heat
+  - entity: sensor.smoker_cook_start
+    name: Cooking since
   - type: divider
   - entity: sensor.smoker_probe_1_temperature
     name: Probe 1

@@ -1,6 +1,7 @@
 {
   "domain": "masterbuilt_gravity",
   "name": "Masterbuilt Gravity (Unofficial)",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@lucvan"],
   "config_flow": true,
   "documentation": "https://github.com/lucvan/masterbuilt-gravity-ha",

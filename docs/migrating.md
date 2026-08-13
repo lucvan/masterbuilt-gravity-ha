@@ -16,26 +16,22 @@ To display a unit other than the grill's, override it per entity in *Settings �
 
 ## Cook-history scraping scripts
 
-**Delete them.** `sensor.<grill>_current_cook_history` is maintained by the integration itself.
+**Delete them, and don't replace them.** If you ran a cron job that queried Recorder over the REST API and POSTed a synthetic history sensor back, the answer is not a better version of that sensor — it is to chart the temperature entities directly. Recorder already has them; that job was reading data out of the database and writing a copy back in.
 
-If you ran a cron job that queried Recorder over the REST API and POSTed a synthetic history sensor back:
+1. Stop and remove the cron job, and its long-lived access token if it existed only for this.
+2. Repoint chart cards at the plain sensors — `sensor.smoker_grill_temperature` and friends — with no `data_generator`. See [`dashboard.md`](dashboard.md).
+3. Delete the `sensor.smoker_current_cook_history` entity the old script created. It will linger as unavailable; it disappears on restart once nothing recreates it.
 
-1. Stop and remove the cron job.
-2. Delete the script and its long-lived access token if it existed only for this.
-3. Repoint chart cards at `sensor.<grill>_current_cook_history` and update the `data_generator` — the attribute format changed. Points are now `[seconds_since_cook_start, value]` rather than `[iso_timestamp, value]`, so the conversion is:
+What you get instead:
 
-   ```js
-   const t0 = new Date(entity.attributes.cook_start).getTime();
-   return ((entity.attributes.series || {}).grill || []).map(p => [t0 + p[0] * 1000, p[1]]);
-   ```
-
-   See [`dashboard.md`](dashboard.md) for the full card.
-4. Remove the `sensor.smoker_current_cook_history` entity created by the old REST POST — it is a different entity from the integration's and will linger as unavailable. *Developer Tools → States* will show the stale one; it disappears on restart since nothing recreates it.
+- `sensor.<grill>_cook_start` — when the current cook began, from the cloud's own session record. This is the one thing Recorder genuinely could not tell you, and it is what the old script was really computing.
+- `sensor.<grill>_last_cook` — the previous completed cook with a decimated series, fetched once when it ends.
+- `masterbuilt_gravity.get_cook_history` / `list_cooks` — any cook ever, including ones from before Home Assistant knew about the grill. Reads your Recorder when it covers the cook, the cloud when it doesn't.
 
 Two behaviours deliberately changed:
 
-- **Values are recorded in the grill's own unit**, not force-converted to Fahrenheit. The `unit` attribute tells you which.
-- **Nothing is recorded while the shadow is stale.** The old script extended the last known value forward for as long as it ran, which turned a wedged WiFi module into a chart line that kept advancing through a period nobody was measuring. Dropouts are now visible as gaps.
+- **Values stay in the grill's own unit**, not force-converted to Fahrenheit.
+- **Gaps stay gaps.** The old script extended the last known value forward for as long as it ran, which turned a wedged WiFi module into a chart line advancing through a period nobody was measuring.
 
 ## Dashboard span rewriting
 

@@ -19,8 +19,9 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_STALE_AFTER,
     DOMAIN,
+    LAST_COOK_MAX_POINTS,
 )
-from .history import CookHistory
+from .history import series_from_snapshots
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,7 +64,8 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     ``self.data`` maps macAddress -> reported state dict.
     ``self.devices`` maps macAddress -> device metadata (givenName, model, ...).
     ``self.reported_at`` maps macAddress -> when the grill last reported.
-    ``self.cooks`` maps macAddress -> CookHistory.
+    ``self.cook`` maps macAddress -> current cook session row (no samples).
+    ``self.last_cook`` maps macAddress -> previous completed cook, with series.
     """
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, api: MasterbuiltApi) -> None:
@@ -80,12 +82,14 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.entry = entry
         self.devices: dict[str, dict[str, Any]] = {}
         self.reported_at: dict[str, datetime | None] = {}
-        self.cooks: dict[str, CookHistory] = {}
+        self.cook: dict[str, dict[str, Any]] = {}
+        self.last_cook: dict[str, dict[str, Any]] = {}
         self.stale_after = timedelta(
             seconds=options.get(CONF_STALE_AFTER, DEFAULT_STALE_AFTER)
         )
         self.track_history = options.get(CONF_TRACK_HISTORY, True)
         self._selected: list[str] | None = options.get(CONF_DEVICES) or None
+        self._powered: dict[str, bool] = {}
 
     def is_stale(self, mac: str) -> bool:
         """True when the grill has not reported within the staleness window."""
@@ -109,14 +113,63 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             if self._selected and mac not in self._selected:
                 continue
             self.devices[mac] = dev
-            self.cooks.setdefault(mac, CookHistory())
+
+    async def _async_refresh_sessions(self, mac: str) -> None:
+        """Refresh the cook-window row and, if it changed, the last finished cook.
+
+        The session *list* is cheap — one small row per cook, no samples — so it
+        is safe to call when cook state changes. Fetching a full session is not
+        cheap (thousands of snapshots, megabytes), so that only happens when a
+        cook actually finishes.
+        """
+        try:
+            sessions = await self.api.async_get_sessions(mac)
+        except MasterbuiltApiError as err:
+            _LOGGER.debug("Session list unavailable for %s: %s", mac, err)
+            return
+
+        self.cook[mac] = next(
+            (s for s in sessions if s.get("state") == "ACTIVE"), {}
+        )
+
+        if not self.track_history:
+            return
+
+        finished = next(
+            (
+                s
+                for s in sessions
+                if s.get("state") != "ACTIVE" and (s.get("snapshotCount") or 0)
+            ),
+            None,
+        )
+        if finished is None or self.last_cook.get(mac, {}).get("id") == finished["id"]:
+            return
+
+        try:
+            full = await self.api.async_get_session(mac, finished["id"])
+        except MasterbuiltApiError as err:
+            _LOGGER.debug("Last-cook fetch failed for %s: %s", mac, err)
+            return
+
+        start = full.get("start") or finished.get("start") or 0
+        series, unit = series_from_snapshots(
+            full.get("snapshots") or [], start, LAST_COOK_MAX_POINTS
+        )
+        self.last_cook[mac] = {
+            "id": full.get("id"),
+            "start": start,
+            "end": full.get("end"),
+            "snapshot_count": full.get("snapshotCount"),
+            "unit": unit,
+            "series": series,
+        }
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
             if not self.devices:
                 await self._async_discover()
 
-            now = datetime.now(timezone.utc)
             result: dict[str, dict[str, Any]] = {}
 
             for mac in self.devices:
@@ -133,10 +186,12 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 result[mac] = reported
                 self.reported_at[mac] = _reported_timestamp(doc)
 
-                if self.track_history:
-                    self.cooks.setdefault(mac, CookHistory()).update(
-                        reported, now, fresh=not self.is_stale(mac)
-                    )
+                # Session lookups only on the first poll and on power
+                # transitions — never on every tick.
+                powered = bool(reported.get("pwrOn"))
+                if mac not in self._powered or self._powered[mac] != powered:
+                    self._powered[mac] = powered
+                    await self._async_refresh_sessions(mac)
 
             return result
         except MasterbuiltAuthError as err:
