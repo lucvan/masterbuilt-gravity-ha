@@ -33,13 +33,27 @@ def _probe(n: int):
     return _fn
 
 
+def _probe_target(n: int):
+    def _fn(r: dict[str, Any]) -> Any:
+        # 0 / missing means no target set for that probe, which should leave a
+        # gap in the series rather than plot a line along the bottom axis.
+        val = (r.get("probes") or {}).get(f"p{n}", {}).get("trgt")
+        return val or None
+
+    return _fn
+
+
 EXTRACTORS = {
     "grill": _grill,
     "target": _target,
     "probe1": _probe(1),
+    "probe1_target": _probe_target(1),
     "probe2": _probe(2),
+    "probe2_target": _probe_target(2),
     "probe3": _probe(3),
+    "probe3_target": _probe_target(3),
     "probe4": _probe(4),
+    "probe4_target": _probe_target(4),
 }
 
 

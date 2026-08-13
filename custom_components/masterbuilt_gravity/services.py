@@ -48,9 +48,13 @@ SERIES_KEYS = {
     "grill": "grill_temp",
     "target": "target_temp",
     "probe1": "probe1_temp",
+    "probe1_target": "probe1_target",
     "probe2": "probe2_temp",
+    "probe2_target": "probe2_target",
     "probe3": "probe3_temp",
+    "probe3_target": "probe3_target",
     "probe4": "probe4_temp",
+    "probe4_target": "probe4_target",
 }
 
 # Local data counts as covering a cook when it starts and ends within this
