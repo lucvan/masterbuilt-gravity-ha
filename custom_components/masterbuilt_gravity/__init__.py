@@ -11,7 +11,11 @@ from .const import CONF_EMAIL, CONF_PASSWORD
 from .coordinator import MasterbuiltCoordinator
 from .services import async_register_services
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.NUMBER,
+]
 
 type MasterbuiltConfigEntry = ConfigEntry[MasterbuiltCoordinator]
 

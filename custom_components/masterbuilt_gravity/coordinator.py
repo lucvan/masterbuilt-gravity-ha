@@ -20,8 +20,17 @@ from .const import (
     DEFAULT_STALE_AFTER,
     DOMAIN,
     LAST_COOK_MAX_POINTS,
+    THING_SALT,
 )
+from .control import MasterbuiltControl
 from .history import series_from_snapshots
+
+
+def thing_name_for(mac_address: str) -> str:
+    """AWS IoT thing name for a device mac (same derivation as api.thing_name)."""
+    import hashlib
+
+    return hashlib.md5(f"{mac_address[4:].lower()}{THING_SALT}".encode()).hexdigest()
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +99,16 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.track_history = options.get(CONF_TRACK_HISTORY, True)
         self._selected: list[str] | None = options.get(CONF_DEVICES) or None
         self._powered: dict[str, bool] = {}
+        self.control = MasterbuiltControl(hass, entry.entry_id)
+
+    async def async_set_grill_target(self, mac: str, value: int) -> None:
+        """Write a grill setpoint, then refresh so the UI reflects it."""
+        await self.control.async_set_grill_target(thing_name_for(mac), value)
+        await self.async_request_refresh()
+
+    async def async_set_probe_target(self, mac: str, probe: int, value: int) -> None:
+        await self.control.async_set_probe_target(thing_name_for(mac), probe, value)
+        await self.async_request_refresh()
 
     def is_stale(self, mac: str) -> bool:
         """True when the grill has not reported within the staleness window."""

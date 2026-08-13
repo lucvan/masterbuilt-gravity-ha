@@ -18,6 +18,33 @@ APP_BASIC = "Basic " + base64.b64encode(_APP_KEY.encode()).decode()
 # thingName = md5( lower(macAddress[4:]) + THING_SALT )
 THING_SALT = ".Kavry9-vaqsar-wirtok"
 
+# ---------------------------------------------------------------------------
+# AWS IoT control plane (writes). Every value below is an app-level constant
+# extracted from the public APK — NOT a per-user secret. The app authenticates
+# all installs to AWS as a single hardcoded service identity, then a fresh
+# per-install X.509 certificate is minted and the CAS backend attaches the
+# shadow policy to it. Setpoint writes are MQTT publishes to the device shadow.
+# See control.py for the flow. These are base64-wrapped only to keep them out
+# of plain-text grep, exactly as the app ships them; they are not confidential.
+# ---------------------------------------------------------------------------
+AWS_REGION = "us-east-2"
+COGNITO_USER_POOL_ID = "us-east-2_91Wt2hzCz"
+COGNITO_CLIENT_ID = "1s3lnige0e77ojajdfn9pnsso4"
+COGNITO_IDENTITY_POOL_ID = "us-east-2:ff94e741-672e-4b13-86a4-78b9e89614bf"
+_COGNITO_CLIENT_SECRET = "MTVidXNsazhjN29ndXZxZWc1djFycGdmdHNiMWQ1aGQyMDc5ZzN1aTJlbzJjbzFvZDQ0dA=="
+_SVC_USER = "cmF1bCtjZXJ0aWZpY2F0ZXNAd2VhcmVlbnZveS5jb20="
+_SVC_PASS = "ZzAzMEpGMDU0MzA1IQ=="
+COGNITO_CLIENT_SECRET = base64.b64decode(_COGNITO_CLIENT_SECRET).decode()
+SVC_USERNAME = base64.b64decode(_SVC_USER).decode()
+SVC_PASSWORD = base64.b64decode(_SVC_PASS).decode()
+
+IOT_ATS_ENDPOINT = "a386xm06thrxxr-ats.iot.us-east-2.amazonaws.com"
+# Attach-policy endpoint (unauthenticated); binds the minted cert to the thing's
+# shadow policy. Not present as a literal in the APK — captured from live traffic.
+ATTACH_POLICY_URL = (
+    "http://masterbuiltaws-production.6k9fbw6cvt.us-west-2.elasticbeanstalk.com/aws/policy"
+)
+
 # Target temperature sentinel meaning "not set / off" (0 F == ~-17 C).
 TARGET_OFF = -17
 

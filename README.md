@@ -2,7 +2,7 @@
 
 Home Assistant integration for **Masterbuilt Gravity Series** charcoal grills and smokers, reading live cook telemetry from Masterbuilt's cloud.
 
-> **Fork notice.** This is a fork of [hruskin/masterbuilt-gravity-ha](https://github.com/hruskin/masterbuilt-gravity-ha) by Martin Hruška, who did the original reverse-engineering of the CAS cloud API and wrote the integration this builds on. MIT-licensed, and that license and copyright are retained. This fork diverges: it adds device selection and reauth to onboarding, fixes Fahrenheit display, and adds staleness diagnostics and in-integration cook history. Issues here, not upstream.
+> **Fork notice.** This is a fork of [hruskin/masterbuilt-gravity-ha](https://github.com/hruskin/masterbuilt-gravity-ha) by Martin Hruška, who did the original reverse-engineering of the CAS cloud API and wrote the integration this builds on. MIT-licensed, and that license and copyright are retained. This fork diverges: it adds device selection and reauth to onboarding, fixes Fahrenheit display, adds staleness diagnostics and in-integration cook history, and — as of v0.6.0 — **settable grill and probe temperatures**. Issues here, not upstream.
 
 Not affiliated with, endorsed by, or supported by Masterbuilt or Middleby.
 
@@ -15,8 +15,7 @@ Not affiliated with, endorsed by, or supported by Masterbuilt or Middleby.
 | **Per-probe** | "At temperature" sensor per probe, with a tolerance offset matching the app's own notification behaviour |
 | **Diagnostics** | Signal strength, last reported, data age, **stale data** |
 | **History** | A downsampled current-cook series for charting, maintained in the integration |
-
-Read-only. See [Writing setpoints](#writing-setpoints) for why.
+| **Control** | Settable **grill** and **probe** targets — see [Setting temperatures](#setting-temperatures) |
 
 ## Install
 
@@ -146,11 +145,28 @@ recorder:
 
 Excluding it does not affect the `get_cook_history` action.
 
-## Writing setpoints
+## Setting temperatures
 
-Not supported, and not for lack of trying. Masterbuilt's cloud runs two planes: the CAS REST API this integration reads from, and an AWS IoT device shadow. **All writes go over MQTT to the shadow**, authenticated with a per-install X.509 certificate the app provisions for itself. There is no setpoint route on the REST API.
+Grill and probe targets are settable:
 
-The transport is understood; the exact `desired` document for a setpoint change is not yet confirmed, and shipping a guess that could move a live fire is not worth it. Contributions welcome if you capture one.
+| Entity | |
+|---|---|
+| `number.<grill>_grill_target` | The grill chamber setpoint |
+| `number.<grill>_probe_N_target` | Each probe's target, shown only while that probe is plugged in |
+
+Both are `number` entities in the grill's own unit, so they read and set in °F on a Fahrenheit grill without conversion. Set them from the UI, a script, or `number.set_value`.
+
+### How it works, and why it's slower than a read
+
+The CAS REST API this integration reads from has **no write route**. Control goes to the grill's AWS IoT device shadow over MQTT, authenticated with a per-install X.509 certificate. On the first write the integration mints that certificate (Cognito → `CreateKeysAndCertificate` → server-side policy attach), caches it, and reuses it thereafter — so the first setpoint change after setup takes a few seconds longer while the certificate is provisioned.
+
+The grill's controller applies the change within a few seconds; the entity updates on the next poll. The setpoint is clamped by the controller to its own limits (150–700 °F chamber).
+
+**Power on/off is deliberately not implemented.** That command is unverified, and turning a live fire on or off from a guessed payload is not a risk this integration takes.
+
+### Dependencies
+
+Writes pull in `boto3`, `pycognito`, and `paho-mqtt` (declared in the manifest; Home Assistant installs them automatically). They are used only for the control path — reads need none of them.
 
 ## Credits
 

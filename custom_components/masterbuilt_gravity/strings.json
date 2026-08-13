@@ -118,6 +118,13 @@
       "probe3_reached": { "name": "Probe 3 at temperature" },
       "probe4_reached": { "name": "Probe 4 at temperature" },
       "stale": { "name": "Stale data" }
+    },
+    "number": {
+      "grill_target_set": { "name": "Grill target" },
+      "probe1_target_set": { "name": "Probe 1 target" },
+      "probe2_target_set": { "name": "Probe 2 target" },
+      "probe3_target_set": { "name": "Probe 3 target" },
+      "probe4_target_set": { "name": "Probe 4 target" }
     }
   }
 }
