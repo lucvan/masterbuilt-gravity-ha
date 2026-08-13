@@ -24,10 +24,11 @@ from homeassistant.core import (
     ServiceResponse,
     SupportsResponse,
 )
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util.unit_conversion import TemperatureConverter
 
 from .const import DOMAIN
 from .history import decimate, series_from_snapshots
@@ -130,9 +131,21 @@ async def _from_recorder(
     base = start.timestamp()
     window = max(0.0, end.timestamp() - base)
     series: dict[str, list[list[float]]] = {}
-    unit: str | None = None
     first: float | None = None
     last: float | None = None
+
+    # Recorder stores each state in whatever unit the entity displayed at the
+    # time, and does not rewrite history when that changes. A cook spanning a
+    # unit change therefore contains both, and charting it raw produces a step
+    # where the grill appears to double in temperature. Normalise every point to
+    # the unit the entity uses now, per state, using each state's own unit.
+    target_unit: str | None = None
+    for entity_id in entities.values():
+        current = hass.states.get(entity_id)
+        if current:
+            target_unit = current.attributes.get("unit_of_measurement")
+            if target_unit:
+                break
 
     for name, entity_id in entities.items():
         points: list[list[float]] = []
@@ -143,8 +156,12 @@ async def _from_recorder(
                 value = float(state.state)
             except (TypeError, ValueError):
                 continue
-            if unit is None:
-                unit = state.attributes.get("unit_of_measurement")
+            state_unit = state.attributes.get("unit_of_measurement")
+            if target_unit and state_unit and state_unit != target_unit:
+                try:
+                    value = TemperatureConverter.convert(value, state_unit, target_unit)
+                except (HomeAssistantError, ValueError):
+                    continue
             offset = state.last_updated.timestamp() - base
             if offset < 0:
                 offset = 0.0
@@ -165,7 +182,7 @@ async def _from_recorder(
         series[name] = decimate(points, limit)
 
     span = (first, last) if first is not None and last is not None else None
-    return series, unit, span
+    return series, target_unit, span
 
 
 def _covers(span: tuple[float, float] | None, duration: float) -> bool:
