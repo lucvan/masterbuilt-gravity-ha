@@ -3,19 +3,52 @@
     "step": {
       "user": {
         "title": "Masterbuilt Gravity",
-        "description": "Sign in with your Masterbuilt app account.",
+        "description": "Sign in with your Masterbuilt app account. These are the same credentials you use in the Masterbuilt mobile app; they are stored locally in Home Assistant and only sent to Masterbuilt's own cloud.",
         "data": {
           "email": "Email",
+          "password": "Password"
+        }
+      },
+      "device": {
+        "title": "Choose your grills",
+        "description": "Your account has more than one paired grill. Pick the ones to add to Home Assistant.",
+        "data": {
+          "devices": "Grills"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "Masterbuilt rejected the saved password for {email}. Enter it again to reconnect.",
+        "data": {
           "password": "Password"
         }
       }
     },
     "error": {
       "invalid_auth": "Invalid email or password.",
-      "cannot_connect": "Failed to connect to the Masterbuilt cloud."
+      "cannot_connect": "Failed to connect to the Masterbuilt cloud.",
+      "no_devices": "That account signed in, but has no paired grills. Pair the grill in the Masterbuilt app first."
     },
     "abort": {
-      "already_configured": "This account is already configured."
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Reconnected to the Masterbuilt cloud."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Masterbuilt Gravity options",
+        "data": {
+          "scan_interval": "Polling interval",
+          "stale_after": "Treat data as stale after",
+          "track_history": "Track current-cook history"
+        },
+        "data_description": {
+          "scan_interval": "How often to poll the Masterbuilt cloud.",
+          "stale_after": "How long the grill can go without reporting before the Stale data sensor turns on. The grill can keep cooking while its WiFi drops out, so this is more trustworthy than the Power sensor.",
+          "track_history": "Records a downsampled series for the current cook, for charting. Turn off if you only chart from Recorder history."
+        }
+      }
     }
   },
   "entity": {
@@ -32,7 +65,10 @@
       "probe3_target": { "name": "Probe 3 target" },
       "probe4_temp": { "name": "Probe 4 temperature" },
       "probe4_target": { "name": "Probe 4 target" },
-      "error": { "name": "Error" }
+      "error": { "name": "Error" },
+      "last_reported": { "name": "Last reported" },
+      "data_age": { "name": "Data age" },
+      "cook_history": { "name": "Current cook history" }
     },
     "binary_sensor": {
       "power": { "name": "Power" },
@@ -45,7 +81,8 @@
       "probe1_reached": { "name": "Probe 1 at temperature" },
       "probe2_reached": { "name": "Probe 2 at temperature" },
       "probe3_reached": { "name": "Probe 3 at temperature" },
-      "probe4_reached": { "name": "Probe 4 at temperature" }
+      "probe4_reached": { "name": "Probe 4 at temperature" },
+      "stale": { "name": "Stale data" }
     }
   }
 }

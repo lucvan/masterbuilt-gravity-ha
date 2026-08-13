@@ -36,6 +36,25 @@ DEFAULT_SCAN_INTERVAL = 30  # seconds
 
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
+CONF_DEVICES = "devices"
+CONF_SCAN_INTERVAL = "scan_interval"
+CONF_STALE_AFTER = "stale_after"
+CONF_TRACK_HISTORY = "track_history"
+
+# The controller can keep cooking while its WiFi module wedges: the cloud then
+# serves a frozen shadow, eventually reporting pwrOn=false with no mainTemp,
+# while the grill is physically still running. Treat a shadow older than this as
+# untrustworthy rather than believing pwrOn. See binary_sensor "stale".
+DEFAULT_STALE_AFTER = 300  # seconds
+
+# In-memory current-cook history. Kept deliberately small: the whole series is
+# published as a state attribute, and HA's Recorder rejects attribute payloads
+# over 16 KiB. Points are stored as [offset_seconds_from_cook_start, value] so
+# each costs ~10 bytes instead of the ~30 an ISO-8601 timestamp would.
+HISTORY_SERIES = ("grill", "target", "probe1", "probe2", "probe3", "probe4")
+HISTORY_MAX_POINTS = 150  # per series
+HISTORY_MIN_INTERVAL = 60  # seconds between recorded points
+HISTORY_MIN_DELTA = 2.0  # degrees; record sooner when the value moves this much
 
 # Reported "errors" is a fixed-size list of error codes (0 == no error in that
 # slot). Known code -> human text. Some texts are server-defined; extend as we

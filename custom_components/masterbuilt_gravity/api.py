@@ -86,11 +86,42 @@ class MasterbuiltApi:
         data = await self._authed_get("/api/v1/paired-device")
         return data if isinstance(data, list) else []
 
-    async def async_get_shadow(self, mac_address: str) -> dict[str, Any]:
-        """Return the reported shadow state for a device, or {} if unavailable."""
+    async def async_get_shadow_document(self, mac_address: str) -> dict[str, Any]:
+        """Return the full shadow document for a device.
+
+        The envelope carries ``timestamp`` (and per-field ``metadata``) which the
+        coordinator needs to tell a fresh shadow from a frozen one — the reported
+        block alone cannot distinguish "grill is off" from "cloud stopped
+        updating an hour ago".
+        """
         path = (
             f"/api/v1/paired-device/{mac_address}/shadows/current"
             f"?thing_name={thing_name(mac_address)}"
         )
-        data = await self._authed_get(path)
-        return data.get("state", {}).get("reported", {}) or {}
+        return await self._authed_get(path) or {}
+
+    async def async_get_shadow(self, mac_address: str) -> dict[str, Any]:
+        """Return just the reported shadow state, or {} if unavailable."""
+        doc = await self.async_get_shadow_document(mac_address)
+        return doc.get("state", {}).get("reported", {}) or {}
+
+    async def async_get_sessions(self, mac_address: str) -> list[dict[str, Any]]:
+        """Return the device's cook sessions (most recent first, per the API)."""
+        data = await self._authed_get(f"/api/v1/paired-device/{mac_address}/sessions")
+        return data if isinstance(data, list) else []
+
+    async def async_get_last_session(self, mac_address: str) -> dict[str, Any]:
+        """Return the most recent cook session, or {} when there is none."""
+        data = await self._authed_get(
+            f"/api/v1/paired-device/{mac_address}/sessions/last"
+        )
+        return data if isinstance(data, dict) else {}
+
+    async def async_get_session(
+        self, mac_address: str, session_id: str | int
+    ) -> dict[str, Any]:
+        """Return one cook session, including its shadow snapshots."""
+        data = await self._authed_get(
+            f"/api/v1/paired-device/{mac_address}/sessions/{session_id}"
+        )
+        return data if isinstance(data, dict) else {}

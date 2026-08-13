@@ -12,8 +12,8 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    EntityCategory,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -122,16 +122,42 @@ PROBE_SENSORS: tuple[MbSensorDescription, ...] = tuple(
 )
 
 
+DIAGNOSTIC_SENSORS: tuple[MbSensorDescription, ...] = (
+    MbSensorDescription(
+        key="last_reported",
+        translation_key="last_reported",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:cloud-clock-outline",
+        value_fn=lambda r: None,  # sourced from the coordinator, not the shadow
+    ),
+    MbSensorDescription(
+        key="data_age",
+        translation_key="data_age",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="s",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:timer-sand",
+        value_fn=lambda r: None,
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: MasterbuiltConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities: list[MasterbuiltSensor] = []
+    entities: list[MasterbuiltEntity] = []
     for mac in coordinator.devices:
         for desc in (*SENSORS, *PROBE_SENSORS):
             entities.append(MasterbuiltSensor(coordinator, mac, desc))
+        for desc in DIAGNOSTIC_SENSORS:
+            entities.append(MasterbuiltFreshnessSensor(coordinator, mac, desc))
+        if coordinator.track_history:
+            entities.append(MasterbuiltCookHistorySensor(coordinator, mac))
     async_add_entities(entities)
 
 
@@ -159,6 +185,19 @@ class MasterbuiltSensor(MasterbuiltEntity, SensorEntity):
         return self.entity_description.native_unit_of_measurement
 
     @property
+    def suggested_unit_of_measurement(self) -> str | None:
+        """Display in whatever unit the grill itself is set to.
+
+        Without this, HA converts the grill's native Fahrenheit into Celsius on a
+        metric system, so the dashboard disagrees with the appliance's own panel.
+        This only seeds the default at registration — a user who wants the other
+        unit can still override it per entity, and that choice sticks.
+        """
+        if self.entity_description.is_temperature:
+            return self.native_unit_of_measurement
+        return None
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         if self.entity_description.attrs_fn:
             return self.entity_description.attrs_fn(self.reported)
@@ -170,3 +209,46 @@ class MasterbuiltSensor(MasterbuiltEntity, SensorEntity):
             return False
         present = self.entity_description.present_fn
         return present(self.reported) if present else True
+
+
+class MasterbuiltFreshnessSensor(MasterbuiltEntity, SensorEntity):
+    """How recently the grill reported, independent of what it reported."""
+
+    entity_description: MbSensorDescription
+
+    def __init__(self, coordinator, mac: str, description: MbSensorDescription) -> None:
+        super().__init__(coordinator, mac, description.key)
+        self.entity_description = description
+
+    @property
+    def native_value(self) -> Any:
+        if self.entity_description.key == "last_reported":
+            return self.coordinator.reported_at.get(self._mac)
+        age = self.coordinator.age(self._mac)
+        return None if age is None else round(age)
+
+
+class MasterbuiltCookHistorySensor(MasterbuiltEntity, SensorEntity):
+    """Current-cook series, for charting without touching Recorder history.
+
+    State is the number of recorded points; the series live in attributes as
+    ``[seconds_since_cook_start, value]`` pairs. The payload is bounded by
+    HISTORY_MAX_POINTS so it stays well inside Recorder's 16 KiB attribute
+    limit — see ``history.py`` for why that matters.
+    """
+
+    _attr_icon = "mdi:chart-line"
+    _attr_translation_key = "cook_history"
+
+    def __init__(self, coordinator, mac: str) -> None:
+        super().__init__(coordinator, mac, "cook_history")
+
+    @property
+    def native_value(self) -> int:
+        cook = self.coordinator.cooks.get(self._mac)
+        return cook.point_count if cook else 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        cook = self.coordinator.cooks.get(self._mac)
+        return cook.as_attributes() if cook else None

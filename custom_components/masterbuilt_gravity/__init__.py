@@ -23,9 +23,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: MasterbuiltConfigEntry) 
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: MasterbuiltConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: MasterbuiltConfigEntry) -> None:
+    """Reload when options change (poll interval, staleness, history tracking)."""
+    await hass.config_entries.async_reload(entry.entry_id)

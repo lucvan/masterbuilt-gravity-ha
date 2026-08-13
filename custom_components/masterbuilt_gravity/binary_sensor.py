@@ -91,11 +91,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities = [
+    entities: list[MasterbuiltEntity] = [
         MasterbuiltBinarySensor(coordinator, mac, desc)
         for mac in coordinator.devices
         for desc in (*BINARY_SENSORS, *PROBE_REACHED)
     ]
+    entities += [MasterbuiltStaleSensor(coordinator, mac) for mac in coordinator.devices]
     async_add_entities(entities)
 
 
@@ -122,3 +123,33 @@ class MasterbuiltBinarySensor(MasterbuiltEntity, BinarySensorEntity):
             return False
         present = self.entity_description.present_fn
         return present(self.reported) if present else True
+
+
+class MasterbuiltStaleSensor(MasterbuiltEntity, BinarySensorEntity):
+    """On when the cloud shadow has stopped being updated by the grill.
+
+    This exists because the failure it detects is genuinely misleading: the
+    controller can carry on cooking while its WiFi module wedges, and the cloud
+    then serves a frozen shadow that eventually reads ``pwrOn: false`` with no
+    ``mainTemp``. Every other entity here will calmly report "off". Alert on
+    this, not on the power sensor.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "stale"
+
+    def __init__(self, coordinator, mac: str) -> None:
+        super().__init__(coordinator, mac, "stale")
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.is_stale(self._mac)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "last_reported": self.coordinator.reported_at.get(self._mac),
+            "age_seconds": self.coordinator.age(self._mac),
+            "threshold_seconds": self.coordinator.stale_after.total_seconds(),
+        }

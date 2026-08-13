@@ -1,11 +1,12 @@
 {
   "domain": "masterbuilt_gravity",
   "name": "Masterbuilt Gravity (Unofficial)",
-  "codeowners": ["@hruskin"],
+  "codeowners": ["@lucvan"],
   "config_flow": true,
-  "documentation": "https://github.com/hruskin/masterbuilt-gravity-ha",
+  "documentation": "https://github.com/lucvan/masterbuilt-gravity-ha",
+  "integration_type": "device",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/hruskin/masterbuilt-gravity-ha/issues",
+  "issue_tracker": "https://github.com/lucvan/masterbuilt-gravity-ha/issues",
   "requirements": [],
-  "version": "0.4.0"
+  "version": "0.5.0"
 }

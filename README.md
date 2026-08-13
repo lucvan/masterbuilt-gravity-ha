@@ -1,82 +1,122 @@
-<img src="https://raw.githubusercontent.com/hruskin/masterbuilt-gravity-ha/main/icon.png" alt="icon" width="96" align="right">
+# Masterbuilt Gravity (Unofficial) — Home Assistant
 
-# Masterbuilt Gravity (Unofficial) – Home Assistant integration
+Home Assistant integration for **Masterbuilt Gravity Series** charcoal grills and smokers, reading live cook telemetry from Masterbuilt's cloud.
 
-Unofficial Home Assistant integration for **Masterbuilt Gravity Series** charcoal
-grills + smokers (560 / 800 / 1050). It reads live state from the Masterbuilt /
-Middleby cloud (the same backend the official mobile app uses) and exposes it as
-Home Assistant entities.
+> **Fork notice.** This is a fork of [hruskin/masterbuilt-gravity-ha](https://github.com/hruskin/masterbuilt-gravity-ha) by Martin Hruška, who did the original reverse-engineering of the CAS cloud API and wrote the integration this builds on. MIT-licensed, and that license and copyright are retained. This fork diverges: it adds device selection and reauth to onboarding, fixes Fahrenheit display, and adds staleness diagnostics and in-integration cook history. Issues here, not upstream.
 
-> ⚠️ **Use at your own risk.** This is an unofficial, reverse-engineered project.
-> It is **not** affiliated with, endorsed by, or supported by Masterbuilt or
-> Middleby. It may stop working at any time if the vendor changes their API or
-> rotates the embedded keys, and it could break without notice. No warranty of
-> any kind – see [LICENSE](LICENSE).
+Not affiliated with, endorsed by, or supported by Masterbuilt or Middleby.
 
-## Features (v0.2.0 – read only)
+## What you get
 
-Per paired grill:
+| | |
+|---|---|
+| **Temperatures** | Grill, target setpoint, and up to 4 meat probes with their targets |
+| **State** | Power, heating, engaged, at-temperature, hopper door, lid, errors |
+| **Per-probe** | "At temperature" sensor per probe, with a tolerance offset matching the app's own notification behaviour |
+| **Diagnostics** | Signal strength, last reported, data age, **stale data** |
+| **History** | A downsampled current-cook series for charting, maintained in the integration |
 
-- **Grill temperature** (`mainTemp`) and **target temperature** (`heat.t2.trgt`)
-- **Probes 1–4** – temperature and target (appear only when a probe is plugged in)
-- **Power**, **cooking**, **hopper door**, **lid** (binary sensors)
-- **Problem** + **Error** – e.g. *Charcoal failed to ignite* (code 4); raw error
-  codes exposed as attributes
-- **Target reached** (binary sensor, derived from `mainTemp ≥ target`)
-- **Heat intensity**, **signal strength** (RSSI), firmware version
+Read-only. See [Writing setpoints](#writing-setpoints) for why.
 
-Units (°C/°F) follow the grill's own setting (`fah`). State is available even when
-the grill is offline (the cloud keeps the last reported state).
+## Install
 
-Control (set temperature, power) is **not** implemented yet – see Roadmap.
+**HACS** → ⋮ → *Custom repositories* → add `https://github.com/lucvan/masterbuilt-gravity-ha`, category **Integration** → install → restart Home Assistant.
 
-## Installation
+Then *Settings → Devices & Services → Add Integration → Masterbuilt Gravity*.
 
-**Manual:** copy `custom_components/masterbuilt_gravity` into
-`config/custom_components/` on your Home Assistant instance and restart.
+Requires Home Assistant 2024.11 or newer.
 
-**HACS:** add this repository as a custom integration repository.
+## Onboarding
 
-Then: *Settings → Devices & Services → Add Integration → Masterbuilt Gravity* and
-sign in with the same email/password you use in the mobile app.
+1. **Sign in** with the same email and password you use in the Masterbuilt mobile app. They are stored in Home Assistant's config entry and sent only to Masterbuilt's own cloud.
+2. **Pick your grills.** If the account has more than one paired grill you choose which to add; a single grill is added automatically.
+3. If Masterbuilt later rejects the password, Home Assistant raises its normal **reauthentication** prompt instead of silently failing — re-enter the password and it reconnects.
 
-## How it works
+### Options
 
-1. `POST cas.masterbuilt.com/api/v1/auth/login` (Basic app key + email/password) → JWT
-2. `GET /api/v1/paired-device` → list of grills (Bearer)
-3. `GET /api/v1/paired-device/{mac}/shadows/current?thing_name=<md5>` → telemetry
+*Settings → Devices & Services → Masterbuilt Gravity → Configure*
 
-`thing_name = md5( lower(mac[4:]) + ".Kavry9-vaqsar-wirtok" )`
+| Option | Default | Notes |
+|---|---|---|
+| Polling interval | 30 s | Cloud poll cadence |
+| Treat data as stale after | 300 s | Drives the **Stale data** sensor |
+| Track current-cook history | on | Turn off if you chart purely from Recorder |
 
-## Roadmap
+## Read this before you build automations
 
-- **v0.3** – control (set target temperature / power) via local **BLE + ESP32**
-  (the cloud backend has no write API; the app writes over AWS IoT MQTT)
-- Optional high/low temperature alarm thresholds
+**The grill can keep cooking while its WiFi module wedges.** When that happens the cloud keeps serving the last shadow it received, and after a while reports `pwrOn: false` with no grill temperature — while the smoker is physically still running at temperature. Every ordinary entity here will calmly report "off".
+
+That is what the **Stale data** binary sensor is for. It watches the *device's own* report timestamps in the shadow metadata, not the envelope timestamp the cloud refreshes on every request.
+
+```yaml
+automation:
+  - alias: Smoker telemetry lost mid-cook
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.smoker_stale_data
+        to: "on"
+        for: "00:05:00"
+    action:
+      - service: notify.mobile_app
+        data:
+          message: >-
+            Lost contact with the smoker. It may still be cooking —
+            check it physically before trusting Home Assistant.
+```
+
+Gate anything safety-adjacent on `binary_sensor.*_stale_data` being `off`, and never on `binary_sensor.*_power` alone.
+
+## Temperatures show in the grill's own unit
+
+The grill reports whether it is set to Fahrenheit or Celsius, and entities are registered with that as the **suggested** display unit. On a metric Home Assistant a Fahrenheit grill therefore still reads in °F, matching the appliance's own panel, rather than being silently converted.
+
+To display the other unit, override it per entity in *Settings → Entities → (entity) → Unit of Measurement*. That choice is remembered.
+
+If you previously built Fahrenheit template sensors to work around this, you can delete them.
+
+## Charting the current cook
+
+`sensor.<grill>_current_cook_history` holds the cook so far. Its state is the point count; the data is in attributes:
+
+```yaml
+cook_start: "2026-08-13T09:12:04+00:00"   # ISO-8601
+cook_end: null                             # set when the grill powers off
+active: true
+unit: "°F"
+series:
+  grill:  [[0, 78.0], [63, 141.5], ...]    # [seconds since cook_start, value]
+  target: [[0, 250.0], ...]
+  probe1: [[0, 41.0], ...]
+```
+
+Points are stored as offsets rather than timestamps to keep the payload small — the whole series is capped at 150 points per channel and decimates itself as a cook runs long, so it stays comfortably inside Recorder's 16 KiB attribute ceiling.
+
+A cook starts when the grill powers on and ends when it powers off. **While the shadow is stale, nothing is recorded** — a dropout shows as a gap rather than a flat line extended through a period nobody was actually measuring.
+
+An example [apexcharts-card](https://github.com/RomRider/apexcharts-card) config is in [`docs/dashboard.md`](docs/dashboard.md).
+
+### Keeping Recorder tidy
+
+The history sensor's attributes are bounded but not tiny. If you don't need them in long-term history:
+
+```yaml
+recorder:
+  exclude:
+    entities:
+      - sensor.smoker_current_cook_history
+```
+
+## Writing setpoints
+
+Not supported, and not for lack of trying. Masterbuilt's cloud runs two planes: the CAS REST API this integration reads from, and an AWS IoT device shadow. **All writes go over MQTT to the shadow**, authenticated with a per-install X.509 certificate the app provisions for itself. There is no setpoint route on the REST API.
+
+The transport is understood; the exact `desired` document for a setpoint change is not yet confirmed, and shipping a guess that could move a live fire is not worth it. Contributions welcome if you capture one.
+
+## Credits
+
+- [Martin Hruška](https://github.com/hruskin) — original integration and CAS API reverse-engineering.
+- Cloud architecture (two-plane model, session/history routes, IoT provisioning flow) mapped from static analysis of the Masterbuilt Android app.
 
 ## License
 
-MIT – see [LICENSE](LICENSE).
-
----
-
-## Česky
-
-Neoficiální integrace pro grily **Masterbuilt Gravity Series** (560/800/1050).
-Čte živý stav z cloudu Masterbuilt/Middleby (stejný backend jako oficiální appka)
-a vystavuje ho v Home Assistantu.
-
-> ⚠️ **Použití na vlastní riziko.** Neoficiální, reverzně-inženýrský projekt, **bez**
-> jakékoli vazby na Masterbuilt/Middleby. Může kdykoli přestat fungovat (změna API
-> nebo rotace klíčů). Bez záruky – viz [LICENSE](LICENSE).
-
-**Co umí (v0.2.0, jen čtení):** teplota grilu a cílová teplota, sondy 1–4,
-napájení/vaření/dvířka/víko, **Problém** + **Chyba** (např. *roztopení selhalo*),
-**cílová teplota dosažena**, intenzita ohřevu, RSSI, verze firmwaru. Jednotka dle
-nastavení grilu, funguje i offline. Ovládání zatím není (plán: lokálně přes
-BLE + ESP32).
-
-**Instalace:** zkopíruj `custom_components/masterbuilt_gravity` do
-`config/custom_components/` a restartuj HA (nebo přidej repo do HACS jako vlastní).
-Pak *Nastavení → Zařízení a služby → Přidat integraci → Masterbuilt Gravity* a
-přihlas se účtem z appky.
+MIT — see [LICENSE](LICENSE).
