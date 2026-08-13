@@ -128,6 +128,7 @@ async def _from_recorder(
     )
 
     base = start.timestamp()
+    window = max(0.0, end.timestamp() - base)
     series: dict[str, list[list[float]]] = {}
     unit: str | None = None
     first: float | None = None
@@ -148,10 +149,20 @@ async def _from_recorder(
             if offset < 0:
                 offset = 0.0
             points.append([round(offset), round(value, 1)])
+            # Coverage is judged across all series, not per series: the question
+            # is whether Recorder was running, and a sensor that simply did not
+            # change is not evidence of a gap.
             first = offset if first is None else min(first, offset)
             last = offset if last is None else max(last, offset)
-        if points:
-            series[name] = decimate(points, limit)
+
+        if not points:
+            continue
+        # Recorder only stores changes, so a held value — a setpoint left alone
+        # for hours — has its last row early in the window and would otherwise
+        # chart as a line that stops dead partway across. Carry it to the end.
+        if window and points[-1][0] < window:
+            points.append([round(window), points[-1][1]])
+        series[name] = decimate(points, limit)
 
     span = (first, last) if first is not None and last is not None else None
     return series, unit, span
