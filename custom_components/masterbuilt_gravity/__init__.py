@@ -9,6 +9,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import MasterbuiltApi
 from .const import CONF_EMAIL, CONF_PASSWORD
 from .coordinator import MasterbuiltCoordinator
+from .services import async_register_services
 
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
@@ -24,6 +25,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MasterbuiltConfigEntry) 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    async_register_services(hass)
     return True
 
 

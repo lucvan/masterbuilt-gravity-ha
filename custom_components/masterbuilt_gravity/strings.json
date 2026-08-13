@@ -51,6 +51,26 @@
       }
     }
   },
+  "services": {
+    "get_cook_history": {
+      "name": "Get cook history",
+      "description": "Fetches a full cook from Masterbuilt's cloud, sampled roughly every 10 seconds. Returned as a service response; nothing is written to entity state.",
+      "fields": {
+        "device_id": {
+          "name": "Grill",
+          "description": "Which grill to fetch a cook for."
+        },
+        "session_id": {
+          "name": "Session ID",
+          "description": "A specific cook to fetch. Leave empty for the most recent one."
+        },
+        "max_points": {
+          "name": "Maximum points",
+          "description": "Thin each series to at most this many points. A long cook can be several thousand samples."
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "grill_temp": { "name": "Grill temperature" },

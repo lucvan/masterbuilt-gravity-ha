@@ -95,6 +95,38 @@ A cook starts when the grill powers on and ends when it powers off. **While the 
 
 An example [apexcharts-card](https://github.com/RomRider/apexcharts-card) config is in [`docs/dashboard.md`](docs/dashboard.md).
 
+## Fetching a whole cook
+
+Masterbuilt's cloud keeps every cook at roughly 10-second resolution, server-side, and it survives Home Assistant restarts. That is far too much data to poll — an overnight cook is a few thousand samples and megabytes of JSON — so it is exposed as a service that returns a response rather than as entity state. Nothing is fetched until you ask, and nothing lands in Recorder.
+
+```yaml
+action: masterbuilt_gravity.get_cook_history
+data:
+  device_id: <your grill>
+  max_points: 300      # thins each series; omit session_id for the latest cook
+response_variable: cook
+```
+
+Returns:
+
+```yaml
+session:
+  id: 8637642
+  state: INACTIVE
+  start: 1786561848     # unix seconds
+  end: 1786592241
+  snapshot_count: 2633
+unit: "°F"
+series:
+  grill:  [[0, 83.0], [89, 96.0], ...]   # [seconds since session start, value]
+  target: [[0, 225.0], ...]
+  probe1: [[0, 76.0], ...]
+```
+
+Omit `session_id` for the most recent cook. Pass one from a previous response to fetch an older one — completed cooks stay available, snapshots included.
+
+A 2633-sample cook thinned to 300 points per series is about 14 KB.
+
 ### Keeping Recorder tidy
 
 The history sensor's attributes are bounded but not tiny. If you don't need them in long-term history:

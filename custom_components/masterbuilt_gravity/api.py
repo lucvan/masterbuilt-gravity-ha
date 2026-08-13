@@ -20,14 +20,24 @@ class MasterbuiltApiError(Exception):
     """Raised on other API/transport errors."""
 
 
+def device_mac(mac_address: str) -> str:
+    """Strip the paired-device prefix to get the grill's own MAC.
+
+    ``/paired-device`` reports a 16-character address (e.g. ``424840F520A3CC06``)
+    carrying a 2-byte prefix, but the session routes are keyed on the grill's
+    real 12-character MAC (``40f520a3cc06``). Passing the prefixed form to
+    ``/sessions`` returns ``200`` with an empty list rather than an error, which
+    is a good way to spend an afternoon concluding the history API is empty.
+    """
+    return mac_address[4:].lower()
+
+
 def thing_name(mac_address: str) -> str:
     """Derive the AWS IoT thing name from the API mac address.
 
-    The API mac (e.g. ``424840F520A3CC06``) carries a 2-byte prefix; the thing
-    name is md5 of the lowercased remainder plus a fixed salt.
+    Same 2-byte-prefix strip as :func:`device_mac`, then md5 with a fixed salt.
     """
-    base = mac_address[4:].lower()
-    return hashlib.md5(f"{base}{THING_SALT}".encode()).hexdigest()
+    return hashlib.md5(f"{device_mac(mac_address)}{THING_SALT}".encode()).hexdigest()
 
 
 class MasterbuiltApi:
@@ -106,22 +116,34 @@ class MasterbuiltApi:
         return doc.get("state", {}).get("reported", {}) or {}
 
     async def async_get_sessions(self, mac_address: str) -> list[dict[str, Any]]:
-        """Return the device's cook sessions (most recent first, per the API)."""
-        data = await self._authed_get(f"/api/v1/paired-device/{mac_address}/sessions")
+        """Return cook sessions, newest first.
+
+        Cheap: one small row per cook (``id``, ``state``, ``start``, ``end``,
+        ``snapshotCount``) with no sample data attached.
+        """
+        data = await self._authed_get(
+            f"/api/v1/paired-device/{device_mac(mac_address)}/sessions"
+        )
         return data if isinstance(data, list) else []
 
     async def async_get_last_session(self, mac_address: str) -> dict[str, Any]:
         """Return the most recent cook session, or {} when there is none."""
         data = await self._authed_get(
-            f"/api/v1/paired-device/{mac_address}/sessions/last"
+            f"/api/v1/paired-device/{device_mac(mac_address)}/sessions/last"
         )
         return data if isinstance(data, dict) else {}
 
     async def async_get_session(
         self, mac_address: str, session_id: str | int
     ) -> dict[str, Any]:
-        """Return one cook session, including its shadow snapshots."""
+        """Return one cook session including every shadow snapshot.
+
+        Expensive and unbounded: the cloud samples roughly every 10 seconds and
+        returns the whole cook inline, so an overnight brisket is several
+        thousand snapshots and megabytes of JSON. Never call this on the poll
+        loop — it exists for the on-demand history service.
+        """
         data = await self._authed_get(
-            f"/api/v1/paired-device/{mac_address}/sessions/{session_id}"
+            f"/api/v1/paired-device/{device_mac(mac_address)}/sessions/{session_id}"
         )
         return data if isinstance(data, dict) else {}

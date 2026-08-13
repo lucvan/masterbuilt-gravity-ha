@@ -1,0 +1,20 @@
+get_cook_history:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: masterbuilt_gravity
+    session_id:
+      required: false
+      example: 8637642
+      selector:
+        text:
+    max_points:
+      required: false
+      default: 300
+      selector:
+        number:
+          min: 10
+          max: 5000
+          mode: box
