@@ -11,11 +11,13 @@ Not affiliated with, endorsed by, or supported by Masterbuilt, Kamado Joe, or Mi
 | Brand | Status |
 |---|---|
 | **Masterbuilt Gravity Series** | Telemetry and setpoint control |
-| **Kamado Joe Konnected Joe** | Telemetry. Control **unverified** — see below |
+| **Kamado Joe Konnected Joe** | Telemetry and setpoint control |
 
 Middleby serves both brands from one backend behind per-brand hostnames — same app key, same routes, same shadow format — so everything the integration *reads* behaves identically once you pick the brand during setup.
 
-Writes are a different path. Setpoints go to AWS IoT rather than the REST API, and that path still reaches Masterbuilt-owned endpoints whatever brand you choose; whether it works on a Konnected Joe has not been confirmed. If you have one, a report either way on the [issue tracker](https://github.com/lucvan/masterbuilt-gravity-ha/issues) is welcome.
+Writes take a different path: setpoints go to AWS IoT rather than the REST API, and reach Masterbuilt-owned endpoints whichever brand you choose. That works on both, confirmed on a Konnected Joe (model `C:G:018:1:D`) in [#2](https://github.com/lucvan/masterbuilt-gravity-ha/issues/2).
+
+Two Konnected Joe quirks worth knowing: it has no hopper, so the **Hopper door** sensor is meaningless there, and **Heat intensity** reports fan speed.
 
 ## What you get
 
@@ -174,7 +176,9 @@ The CAS REST API this integration reads from has **no write route**. Control goe
 
 The grill's controller applies the change within a few seconds; the entity updates on the next poll. The setpoint is clamped by the controller to its own limits (150–700 °F chamber).
 
-Note that this write path is **not** brand-routed the way reads are: the certificate is minted against Masterbuilt's AWS account and the shadow published to Masterbuilt's IoT endpoint regardless of the brand chosen at setup. It is verified on Masterbuilt grills only.
+This write path is deliberately **not** brand-routed the way reads are: the certificate is minted against Masterbuilt's AWS account and the shadow published to Masterbuilt's IoT endpoint whichever brand you picked at setup. Middleby appears to run one control plane behind the per-brand REST hosts, and it is confirmed working on both a Masterbuilt Gravity and a Kamado Joe Konnected Joe.
+
+The chamber range comes from `heat.t2.min`/`max` in the grill's own shadow, so each grill offers exactly what its app does — up to 700 °F on a Gravity Series, 369 °C on a Konnected Joe.
 
 **Power on/off is deliberately not implemented.** That command is unverified, and turning a live fire on or off from a guessed payload is not a risk this integration takes.
 

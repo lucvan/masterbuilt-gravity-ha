@@ -65,11 +65,11 @@ THING_SALT = ".Kavry9-vaqsar-wirtok"
 # See control.py for the flow. These are base64-wrapped only to keep them out
 # of plain-text grep, exactly as the app ships them; they are not confidential.
 #
-# Every value here is Masterbuilt-scoped and has NOT been confirmed for other
-# brands -- a Kamado Joe install currently mints its certificate against these
-# same Masterbuilt-owned endpoints. Reads are brand-routed via BRANDS above;
-# writes are not. If setpoint writes turn out to fail on another brand, these
-# constants move into BRANDS and stop being module-level.
+# These stay module-level rather than moving into BRANDS: the control plane is
+# shared across Middleby brands where CAS is not. A Kamado Joe install mints
+# its certificate against these same Masterbuilt-owned endpoints, and grill and
+# probe setpoint writes are confirmed working that way on a Konnected Joe
+# (model C:G:018:1:D, 2026-09-07). Reads are brand-routed; writes need not be.
 # ---------------------------------------------------------------------------
 AWS_REGION = "us-east-2"
 COGNITO_USER_POOL_ID = "us-east-2_91Wt2hzCz"

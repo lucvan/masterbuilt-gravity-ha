@@ -17,8 +17,9 @@ from .entity import MasterbuiltEntity
 
 _PROBE_MIN_F = 32
 _PROBE_MAX_F = 300
-# Grill limits mirror heat.t2.min/max, reported in Fahrenheit regardless of the
-# grill's display unit.
+# Fallbacks for a shadow that carries no heat.t2.min/max. Fahrenheit, and
+# converted at read time -- unlike the reported limits, which already arrive in
+# the grill's own unit. See _TempNumber._limit.
 _GRILL_MIN_F = 150
 _GRILL_MAX_F = 700
 
@@ -71,11 +72,26 @@ class MasterbuiltGrillTarget(_TempNumber):
 
     @property
     def native_min_value(self) -> float:
-        return _to_display(self.reported, self.reported.get("heat", {}).get("t2", {}).get("min", _GRILL_MIN_F))
+        return self._limit("min", _GRILL_MIN_F)
 
     @property
     def native_max_value(self) -> float:
-        return _to_display(self.reported, self.reported.get("heat", {}).get("t2", {}).get("max", _GRILL_MAX_F))
+        return self._limit("max", _GRILL_MAX_F)
+
+    def _limit(self, key: str, fallback_f: int) -> float:
+        """Chamber limit, in the grill's own unit.
+
+        heat.t2.min/max arrive in the same unit as heat.t2.trgt beside them --
+        the grill's own -- so they are used as reported, and only the
+        Fahrenheit fallbacks get converted. Converting the reported limits as
+        though they were always Fahrenheit is unfalsifiable on a Fahrenheit
+        grill and roughly halves the range on a Celsius one: a Konnected Joe
+        reporting a 370 C ceiling was offering 188 C (#2).
+        """
+        limit = (self.reported.get("heat") or {}).get("t2", {}).get(key)
+        if limit is not None:
+            return limit
+        return _to_display(self.reported, fallback_f)
 
     @property
     def native_value(self) -> float | None:
