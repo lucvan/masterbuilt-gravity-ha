@@ -186,6 +186,12 @@ The chamber range comes from `heat.t2.min`/`max` in the grill's own shadow, so e
 
 Writes pull in `boto3`, `pycognito`, and `paho-mqtt` (declared in the manifest; Home Assistant installs them automatically). They are used only for the control path — reads need none of them.
 
+## Reporting a problem
+
+*Settings → Devices & Services → Masterbuilt Gravity → ⋮ → Download diagnostics* dumps the raw shadow document your grill last published, plus the entry's options and cook state. Email, password, MAC and similar identifiers are redacted; the telemetry is not, because that is the part worth looking at.
+
+Attach that to an issue. Most questions here come down to which keys a particular model reports and what unit their values are in, and the dump answers both without a round of guessing.
+
 ## Credits
 
 - [Martin Hruška](https://github.com/hruskin) — original integration and CAS API reverse-engineering.
