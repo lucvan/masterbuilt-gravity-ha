@@ -1,10 +1,21 @@
 # Masterbuilt Gravity (Unofficial) — Home Assistant
 
-Home Assistant integration for **Masterbuilt Gravity Series** charcoal grills and smokers, reading live cook telemetry from Masterbuilt's cloud.
+Home Assistant integration for **Masterbuilt Gravity Series** charcoal grills and smokers and the **Kamado Joe Konnected Joe**, reading live cook telemetry from Middleby's cloud.
 
 > **Fork notice.** This is a fork of [hruskin/masterbuilt-gravity-ha](https://github.com/hruskin/masterbuilt-gravity-ha) by Martin Hruška, who did the original reverse-engineering of the CAS cloud API and wrote the integration this builds on. MIT-licensed, and that license and copyright are retained. This fork diverges: it adds device selection and reauth to onboarding, fixes Fahrenheit display, adds staleness diagnostics and in-integration cook history, and — as of v0.6.0 — **settable grill and probe temperatures**. Issues here, not upstream.
 
-Not affiliated with, endorsed by, or supported by Masterbuilt or Middleby.
+Not affiliated with, endorsed by, or supported by Masterbuilt, Kamado Joe, or Middleby.
+
+## Supported grills
+
+| Brand | Status |
+|---|---|
+| **Masterbuilt Gravity Series** | Telemetry and setpoint control |
+| **Kamado Joe Konnected Joe** | Telemetry. Control **unverified** — see below |
+
+Middleby serves both brands from one backend behind per-brand hostnames — same app key, same routes, same shadow format — so everything the integration *reads* behaves identically once you pick the brand during setup.
+
+Writes are a different path. Setpoints go to AWS IoT rather than the REST API, and that path still reaches Masterbuilt-owned endpoints whatever brand you choose; whether it works on a Konnected Joe has not been confirmed. If you have one, a report either way on the [issue tracker](https://github.com/lucvan/masterbuilt-gravity-ha/issues) is welcome.
 
 ## What you get
 
@@ -27,9 +38,10 @@ Requires Home Assistant 2024.11 or newer.
 
 ## Onboarding
 
-1. **Sign in** with the same email and password you use in the Masterbuilt mobile app. They are stored in Home Assistant's config entry and sent only to Masterbuilt's own cloud.
-2. **Pick your grills.** If the account has more than one paired grill you choose which to add; a single grill is added automatically.
-3. If Masterbuilt later rejects the password, Home Assistant raises its normal **reauthentication** prompt instead of silently failing — re-enter the password and it reconnects.
+1. **Pick your brand.** Masterbuilt or Kamado Joe — this selects which cloud host to sign in to, and nothing else.
+2. **Sign in** with the same email and password you use in that brand's mobile app. They are stored in Home Assistant's config entry and sent only to that manufacturer's own cloud.
+3. **Pick your grills.** If the account has more than one paired grill you choose which to add; a single grill is added automatically.
+4. If the cloud later rejects the password, Home Assistant raises its normal **reauthentication** prompt instead of silently failing — re-enter the password and it reconnects.
 
 ### Options
 
@@ -161,6 +173,8 @@ Both are `number` entities in the grill's own unit, so they read and set in °F 
 The CAS REST API this integration reads from has **no write route**. Control goes to the grill's AWS IoT device shadow over MQTT, authenticated with a per-install X.509 certificate. On the first write the integration mints that certificate (Cognito → `CreateKeysAndCertificate` → server-side policy attach), caches it, and reuses it thereafter — so the first setpoint change after setup takes a few seconds longer while the certificate is provisioned.
 
 The grill's controller applies the change within a few seconds; the entity updates on the next poll. The setpoint is clamped by the controller to its own limits (150–700 °F chamber).
+
+Note that this write path is **not** brand-routed the way reads are: the certificate is minted against Masterbuilt's AWS account and the shadow published to Masterbuilt's IoT endpoint regardless of the brand chosen at setup. It is verified on Masterbuilt grills only.
 
 **Power on/off is deliberately not implemented.** That command is unverified, and turning a live fire on or off from a guessed payload is not a risk this integration takes.
 

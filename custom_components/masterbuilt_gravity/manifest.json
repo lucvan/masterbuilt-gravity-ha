@@ -1,6 +1,6 @@
 {
   "domain": "masterbuilt_gravity",
-  "name": "Masterbuilt Gravity (Unofficial)",
+  "name": "Masterbuilt Gravity & Kamado Joe (Unofficial)",
   "after_dependencies": ["recorder"],
   "codeowners": ["@lucvan"],
   "config_flow": true,
@@ -13,5 +13,5 @@
     "pycognito>=2024.5.1",
     "paho-mqtt>=1.6.1"
   ],
-  "version": "0.6.0"
+  "version": "0.7.0-beta1"
 }

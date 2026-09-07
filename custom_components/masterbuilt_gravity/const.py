@@ -5,8 +5,46 @@ import base64
 
 DOMAIN = "masterbuilt_gravity"
 
-# CAS REST backend (reverse-engineered from the official app v1.0.41)
-CAS_BASE = "https://cas.masterbuilt.com"
+# ---------------------------------------------------------------------------
+# CAS REST backend (reverse-engineered from the official app v1.0.41).
+#
+# Middleby serves several of its grill brands from the same backend behind
+# per-brand CAS hostnames. The app key, thing-name salt and the shadow and
+# session routes are all identical; only the host differs, which is why a
+# Kamado Joe Konnected Joe works with nothing changed but this value. Anything
+# that later turns out to vary by brand belongs in this table, not in the code.
+# ---------------------------------------------------------------------------
+DEFAULT_BRAND = "masterbuilt"
+
+BRANDS: dict[str, dict[str, str]] = {
+    "masterbuilt": {
+        "label": "Masterbuilt",
+        "cas_base": "https://cas.masterbuilt.com",
+    },
+    "kamado_joe": {
+        "label": "Kamado Joe",
+        "cas_base": "https://cas.kamadojoe.com",
+    },
+}
+
+
+def _brand(brand: str | None) -> dict[str, str]:
+    """Resolve a brand slug.
+
+    Config entries created before multi-brand support carry no brand key, so a
+    missing or unrecognised slug has to resolve to Masterbuilt.
+    """
+    return BRANDS.get(brand or DEFAULT_BRAND, BRANDS[DEFAULT_BRAND])
+
+
+def cas_base(brand: str | None) -> str:
+    """CAS REST host for a brand slug."""
+    return _brand(brand)["cas_base"]
+
+
+def brand_label(brand: str | None) -> str:
+    """Display name for a brand slug."""
+    return _brand(brand)["label"]
 
 # App-level key used as HTTP Basic auth for the unauthenticated login endpoint.
 _APP_KEY = (
@@ -26,6 +64,12 @@ THING_SALT = ".Kavry9-vaqsar-wirtok"
 # shadow policy to it. Setpoint writes are MQTT publishes to the device shadow.
 # See control.py for the flow. These are base64-wrapped only to keep them out
 # of plain-text grep, exactly as the app ships them; they are not confidential.
+#
+# Every value here is Masterbuilt-scoped and has NOT been confirmed for other
+# brands -- a Kamado Joe install currently mints its certificate against these
+# same Masterbuilt-owned endpoints. Reads are brand-routed via BRANDS above;
+# writes are not. If setpoint writes turn out to fail on another brand, these
+# constants move into BRANDS and stop being module-level.
 # ---------------------------------------------------------------------------
 AWS_REGION = "us-east-2"
 COGNITO_USER_POOL_ID = "us-east-2_91Wt2hzCz"
@@ -61,6 +105,7 @@ def _reached(current: float, target: float, fah: bool | None) -> bool:
 
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 
+CONF_BRAND = "brand"
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 CONF_DEVICES = "devices"

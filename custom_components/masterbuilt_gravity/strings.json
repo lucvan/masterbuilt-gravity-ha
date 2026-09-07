@@ -3,10 +3,14 @@
     "step": {
       "user": {
         "title": "Masterbuilt Gravity",
-        "description": "Sign in with your Masterbuilt app account. These are the same credentials you use in the Masterbuilt mobile app; they are stored locally in Home Assistant and only sent to Masterbuilt's own cloud.",
+        "description": "Choose your grill's brand and sign in with the account you use in its mobile app. The credentials are stored locally in Home Assistant and sent only to that manufacturer's own cloud.",
         "data": {
+          "brand": "Brand",
           "email": "Email",
           "password": "Password"
+        },
+        "data_description": {
+          "brand": "Masterbuilt Gravity Series and Kamado Joe Konnected Joe grills run on the same cloud backend. Pick the app your grill is paired in."
         }
       },
       "device": {
@@ -18,7 +22,7 @@
       },
       "reauth_confirm": {
         "title": "Sign in again",
-        "description": "Masterbuilt rejected the saved password for {email}. Enter it again to reconnect.",
+        "description": "The cloud rejected the saved password for {email}. Enter it again to reconnect.",
         "data": {
           "password": "Password"
         }
@@ -26,12 +30,12 @@
     },
     "error": {
       "invalid_auth": "Invalid email or password.",
-      "cannot_connect": "Failed to connect to the Masterbuilt cloud.",
-      "no_devices": "That account signed in, but has no paired grills. Pair the grill in the Masterbuilt app first."
+      "cannot_connect": "Failed to connect to the grill's cloud.",
+      "no_devices": "That account signed in, but has no paired grills. Pair the grill in the manufacturer's app first."
     },
     "abort": {
       "already_configured": "This account is already configured.",
-      "reauth_successful": "Reconnected to the Masterbuilt cloud."
+      "reauth_successful": "Reconnected to the grill's cloud."
     }
   },
   "options": {
@@ -44,7 +48,7 @@
           "track_history": "Track current-cook history"
         },
         "data_description": {
-          "scan_interval": "How often to poll the Masterbuilt cloud.",
+          "scan_interval": "How often to poll the grill's cloud.",
           "stale_after": "How long the grill can go without reporting before the Stale data sensor turns on. The grill can keep cooking while its WiFi drops out, so this is more trustworthy than the Power sensor.",
           "track_history": "Records a downsampled series for the current cook, for charting. Turn off if you only chart from Recorder history."
         }
