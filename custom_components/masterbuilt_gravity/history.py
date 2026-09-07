@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.util.unit_conversion import TemperatureConverter
+
 from .const import TARGET_OFF
 
 
@@ -57,6 +59,14 @@ EXTRACTORS = {
 }
 
 
+def _snapshot_unit(snapshot: dict[str, Any]) -> str | None:
+    """Unit in force when a snapshot was taken, or None if it does not say."""
+    shadow = snapshot.get("shadow") or {}
+    if "fah" not in shadow:
+        return None
+    return "°F" if shadow.get("fah") else "°C"
+
+
 def decimate(points: list[list[float]], limit: int) -> list[list[float]]:
     """Evenly thin a series to at most ``limit`` points, keeping both endpoints."""
     if len(points) <= limit:
@@ -74,26 +84,43 @@ def series_from_snapshots(
     """Turn cloud session snapshots into offset series, oldest first.
 
     The API returns snapshots newest-first; charts want the opposite. Points are
-    ``[seconds_since_session_start, value]``. Returns ``(series, unit)``, unit
-    read from the first snapshot that carries the ``fah`` flag.
+    ``[seconds_since_session_start, value]``. Returns ``(series, unit)``.
+
+    The unit is a setting on the appliance itself and each snapshot carries the
+    ``fah`` flag in force when it was taken, so a cook spanning a change on the
+    grill's own panel holds both. Every point is normalised to the unit the cook
+    ended in; taking the first unit and labelling the rest with it charts a step
+    where the grill appears to double in temperature. That is the same defect
+    the Recorder path had -- see ``_from_recorder`` in services.py -- and every
+    series here is a temperature, so all of them need it.
     """
     ordered = sorted(snapshots, key=lambda s: s.get("timestamp") or 0)
     series: dict[str, list[list[float]]] = {name: [] for name in EXTRACTORS}
-    unit: str | None = None
+
+    declared = [u for u in (_snapshot_unit(s) for s in ordered) if u]
+    unit = declared[-1] if declared else None
+    # Snapshots before the first declaration are assumed to be in the first
+    # unit declared, not the last: the flag is missing, not changed.
+    current = declared[0] if declared else None
 
     for snap in ordered:
         shadow = snap.get("shadow") or {}
-        if unit is None and "fah" in shadow:
-            unit = "°F" if shadow.get("fah") else "°C"
+        current = _snapshot_unit(snap) or current
         offset = (snap.get("timestamp") or start) - start
         for name, extract in EXTRACTORS.items():
             value = extract(shadow)
             if value is None:
                 continue
             try:
-                series[name].append([offset, round(float(value), 1)])
+                value = float(value)
             except (TypeError, ValueError):
                 continue
+            if unit and current and current != unit:
+                try:
+                    value = TemperatureConverter.convert(value, current, unit)
+                except (TypeError, ValueError):
+                    continue
+            series[name].append([offset, round(value, 1)])
 
     populated = {k: v for k, v in series.items() if v}
     if limit is not None:
