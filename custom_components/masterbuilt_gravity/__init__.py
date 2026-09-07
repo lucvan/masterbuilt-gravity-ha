@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import MasterbuiltApi
-from .const import CONF_EMAIL, CONF_PASSWORD
+from .const import CONF_BRAND, CONF_EMAIL, CONF_PASSWORD, DEFAULT_BRAND
 from .coordinator import MasterbuiltCoordinator
 from .services import async_register_services
 
@@ -23,7 +23,12 @@ type MasterbuiltConfigEntry = ConfigEntry[MasterbuiltCoordinator]
 async def async_setup_entry(hass: HomeAssistant, entry: MasterbuiltConfigEntry) -> bool:
     """Set up Masterbuilt Gravity from a config entry."""
     session = async_get_clientsession(hass)
-    api = MasterbuiltApi(session, entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD])
+    api = MasterbuiltApi(
+        session,
+        entry.data[CONF_EMAIL],
+        entry.data[CONF_PASSWORD],
+        entry.data.get(CONF_BRAND, DEFAULT_BRAND),
+    )
     coordinator = MasterbuiltCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

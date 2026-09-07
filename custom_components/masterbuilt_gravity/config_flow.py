@@ -29,21 +29,34 @@ from homeassistant.helpers.selector import (
 
 from .api import MasterbuiltApi, MasterbuiltApiError, MasterbuiltAuthError
 from .const import (
+    BRANDS,
+    CONF_BRAND,
     CONF_DEVICES,
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
     CONF_STALE_AFTER,
     CONF_TRACK_HISTORY,
+    DEFAULT_BRAND,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_STALE_AFTER,
     DOMAIN,
+    brand_label,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 STEP_USER = vol.Schema(
     {
+        vol.Required(CONF_BRAND, default=DEFAULT_BRAND): SelectSelector(
+            SelectSelectorConfig(
+                options=[
+                    SelectOptionDict(value=slug, label=meta["label"])
+                    for slug, meta in BRANDS.items()
+                ],
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        ),
         vol.Required(CONF_EMAIL): TextSelector(
             TextSelectorConfig(type=TextSelectorType.EMAIL, autocomplete="username")
         ),
@@ -66,7 +79,7 @@ STEP_REAUTH = vol.Schema(
 )
 
 
-def _device_label(device: dict[str, Any]) -> str:
+def _device_label(device: dict[str, Any], fallback: str) -> str:
     """Human-readable label for the device picker.
 
     The cloud's ``givenName`` is whatever the account holder typed into the app
@@ -74,15 +87,15 @@ def _device_label(device: dict[str, Any]) -> str:
     enough of the MAC to tell two identical grills apart.
     """
     mac = device.get("macAddress", "")
-    name = device.get("givenName") or device.get("model") or "Masterbuilt grill"
+    name = device.get("givenName") or device.get("model") or fallback
     return f"{name} ({mac[-6:]})" if mac else name
 
 
 async def _async_fetch_devices(
-    hass, email: str, password: str
+    hass, email: str, password: str, brand: str = DEFAULT_BRAND
 ) -> list[dict[str, Any]]:
     """Log in and return the account's paired devices."""
-    api = MasterbuiltApi(async_get_clientsession(hass), email, password)
+    api = MasterbuiltApi(async_get_clientsession(hass), email, password, brand)
     await api.async_login()
     return await api.async_get_devices()
 
@@ -93,6 +106,7 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
+        self._brand: str = DEFAULT_BRAND
         self._email: str | None = None
         self._password: str | None = None
         self._devices: list[dict[str, Any]] = []
@@ -102,12 +116,20 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
+            brand = user_input.get(CONF_BRAND, DEFAULT_BRAND)
             email = user_input[CONF_EMAIL]
-            await self.async_set_unique_id(email.lower())
+            # Masterbuilt entries keep the bare email as their unique id --
+            # they predate brand support, and re-keying them would need an
+            # entry migration for no benefit. Other brands are namespaced, so
+            # one address can hold an account with each.
+            unique_id = email.lower()
+            if brand != DEFAULT_BRAND:
+                unique_id = f"{brand}:{unique_id}"
+            await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
             try:
                 devices = await _async_fetch_devices(
-                    self.hass, email, user_input[CONF_PASSWORD]
+                    self.hass, email, user_input[CONF_PASSWORD], brand
                 )
             except MasterbuiltAuthError:
                 errors["base"] = "invalid_auth"
@@ -117,6 +139,7 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
                 if not devices:
                     errors["base"] = "no_devices"
                 else:
+                    self._brand = brand
                     self._email = email
                     self._password = user_input[CONF_PASSWORD]
                     self._devices = devices
@@ -135,8 +158,9 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             return self._create(*user_input[CONF_DEVICES])
 
+        fallback = f"{brand_label(self._brand)} grill"
         options = [
-            SelectOptionDict(value=d["macAddress"], label=_device_label(d))
+            SelectOptionDict(value=d["macAddress"], label=_device_label(d, fallback))
             for d in self._devices
             if d.get("macAddress")
         ]
@@ -157,9 +181,14 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def _create(self, *macs: str | None) -> ConfigFlowResult:
         selected = [m for m in macs if m]
+        label = brand_label(self._brand)
         return self.async_create_entry(
-            title=self._email or "Masterbuilt",
-            data={CONF_EMAIL: self._email, CONF_PASSWORD: self._password},
+            title=f"{label} ({self._email})" if self._email else label,
+            data={
+                CONF_BRAND: self._brand,
+                CONF_EMAIL: self._email,
+                CONF_PASSWORD: self._password,
+            },
             options={CONF_DEVICES: selected},
         )
 
@@ -167,6 +196,7 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
         self, entry_data: dict[str, Any]
     ) -> ConfigFlowResult:
         """Triggered when the stored password stops working."""
+        self._brand = entry_data.get(CONF_BRAND, DEFAULT_BRAND)
         self._email = entry_data.get(CONF_EMAIL)
         return await self.async_step_reauth_confirm()
 
@@ -178,7 +208,10 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 await _async_fetch_devices(
-                    self.hass, entry.data[CONF_EMAIL], user_input[CONF_PASSWORD]
+                    self.hass,
+                    entry.data[CONF_EMAIL],
+                    user_input[CONF_PASSWORD],
+                    entry.data.get(CONF_BRAND, DEFAULT_BRAND),
                 )
             except MasterbuiltAuthError:
                 errors["base"] = "invalid_auth"

@@ -7,7 +7,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import APP_BASIC, CAS_BASE, THING_SALT
+from .const import APP_BASIC, DEFAULT_BRAND, THING_SALT, cas_base
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,15 +43,22 @@ def thing_name(mac_address: str) -> str:
 class MasterbuiltApi:
     """Handles login, device listing and shadow polling."""
 
-    def __init__(self, session: aiohttp.ClientSession, email: str, password: str) -> None:
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        email: str,
+        password: str,
+        brand: str | None = DEFAULT_BRAND,
+    ) -> None:
         self._session = session
         self._email = email
         self._password = password
+        self._cas_base = cas_base(brand)
         self._token: str | None = None
 
     async def async_login(self) -> str:
         """Authenticate and cache the bearer token."""
-        url = f"{CAS_BASE}/api/v1/auth/login"
+        url = f"{self._cas_base}/api/v1/auth/login"
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -80,7 +87,7 @@ class MasterbuiltApi:
         for attempt in range(2):
             headers = {"Accept": "application/json", "Authorization": f"Bearer {self._token}"}
             try:
-                async with self._session.get(f"{CAS_BASE}{path}", headers=headers) as resp:
+                async with self._session.get(f"{self._cas_base}{path}", headers=headers) as resp:
                     if resp.status == 401 and attempt == 0:
                         await self.async_login()
                         continue
