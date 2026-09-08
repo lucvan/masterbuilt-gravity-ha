@@ -2,7 +2,7 @@
 
 Home Assistant integration for **Masterbuilt Gravity Series** charcoal grills and smokers and the **Kamado Joe Konnected Joe**, reading live cook telemetry from Middleby's cloud.
 
-> **Fork notice.** This is a fork of [hruskin/masterbuilt-gravity-ha](https://github.com/hruskin/masterbuilt-gravity-ha) by Martin Hruška, who did the original reverse-engineering of the CAS cloud API and wrote the integration this builds on. MIT-licensed, and that license and copyright are retained. This fork diverges: it adds device selection and reauth to onboarding, fixes Fahrenheit display, adds staleness diagnostics and in-integration cook history, and — as of v0.6.0 — **settable grill and probe temperatures**. Issues here, not upstream.
+> **Fork notice.** This is a fork of [hruskin/masterbuilt-gravity-ha](https://github.com/hruskin/masterbuilt-gravity-ha) by Martin Hruška, who did the original reverse-engineering of the CAS cloud API and wrote the integration this builds on. MIT-licensed, and that license and copyright are retained. This fork diverges: it adds device selection and reauth to onboarding, fixes Fahrenheit display, adds staleness diagnostics and in-integration cook history, and — as of v0.6.0 — **settable grill and probe temperatures**. v0.7.0 adds Kamado Joe support. Issues here, not upstream.
 
 Not affiliated with, endorsed by, or supported by Masterbuilt, Kamado Joe, or Middleby.
 
@@ -17,7 +17,7 @@ Middleby serves both brands from one backend behind per-brand hostnames — same
 
 Writes take a different path: setpoints go to AWS IoT rather than the REST API, and reach Masterbuilt-owned endpoints whichever brand you choose. That works on both, confirmed on a Konnected Joe (model `C:G:018:1:D`) in [#2](https://github.com/lucvan/masterbuilt-gravity-ha/issues/2).
 
-Two Konnected Joe quirks worth knowing: it has no hopper, so the **Hopper door** sensor is meaningless there, and **Heat intensity** reports fan speed.
+The two grills differ in what they expose, and the integration adjusts: a Konnected Joe has no hopper, so its **Hopper door** sensor is not created at all, and the `heat.t2.intensity` value it shares with the Gravity Series is named **Fan speed** there, which is what it actually drives.
 
 ## What you get
 
@@ -178,7 +178,7 @@ The grill's controller applies the change within a few seconds; the entity updat
 
 This write path is deliberately **not** brand-routed the way reads are: the certificate is minted against Masterbuilt's AWS account and the shadow published to Masterbuilt's IoT endpoint whichever brand you picked at setup. Middleby appears to run one control plane behind the per-brand REST hosts, and it is confirmed working on both a Masterbuilt Gravity and a Kamado Joe Konnected Joe.
 
-The chamber range comes from `heat.t2.min`/`max` in the grill's own shadow, so each grill offers exactly what its app does — up to 700 °F on a Gravity Series, 369 °C on a Konnected Joe.
+The chamber range comes from `heat.t2.min`/`max` in the grill's own shadow, so each grill offers exactly what its app does — up to 700 °F on a Gravity Series, and 371 °C on a Konnected Joe set to Celsius.
 
 **Power on/off is deliberately not implemented.** That command is unverified, and turning a live fire on or off from a guessed payload is not a risk this integration takes.
 

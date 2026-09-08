@@ -16,7 +16,7 @@ from typing import Any
 
 from homeassistant.util.unit_conversion import TemperatureConverter
 
-from .const import TARGET_OFF
+from .const import target_or_none
 
 
 def _grill(r: dict[str, Any]) -> Any:
@@ -24,8 +24,7 @@ def _grill(r: dict[str, Any]) -> Any:
 
 
 def _target(r: dict[str, Any]) -> Any:
-    val = r.get("heat", {}).get("t2", {}).get("trgt")
-    return None if val is None or val == TARGET_OFF else val
+    return target_or_none(r.get("heat", {}).get("t2", {}).get("trgt"))
 
 
 def _probe(n: int):

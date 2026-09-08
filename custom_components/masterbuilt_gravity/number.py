@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import MasterbuiltConfigEntry
-from .const import TARGET_OFF
+from .const import target_or_none
 from .entity import MasterbuiltEntity
 
 _PROBE_MIN_F = 32
@@ -95,8 +95,7 @@ class MasterbuiltGrillTarget(_TempNumber):
 
     @property
     def native_value(self) -> float | None:
-        val = self.reported.get("heat", {}).get("t2", {}).get("trgt")
-        return None if val is None or val == TARGET_OFF else val
+        return target_or_none(self.reported.get("heat", {}).get("t2", {}).get("trgt"))
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_set_grill_target(self._mac, round(value))

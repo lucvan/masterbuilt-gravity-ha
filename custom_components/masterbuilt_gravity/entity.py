@@ -6,7 +6,7 @@ from typing import Any
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, brand_traits
 from .coordinator import MasterbuiltCoordinator
 
 
@@ -20,11 +20,12 @@ class MasterbuiltEntity(CoordinatorEntity[MasterbuiltCoordinator]):
         self._mac = mac
         self._attr_unique_id = f"{mac}_{key}"
         meta = coordinator.devices.get(mac, {})
+        traits = brand_traits(coordinator.brand)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
-            name=meta.get("givenName") or "Masterbuilt Gravity",
-            manufacturer="Masterbuilt",
-            model=meta.get("model") or "Gravity Series",
+            name=meta.get("givenName") or traits["default_name"],
+            manufacturer=traits["label"],
+            model=meta.get("model") or traits["default_model"],
             sw_version=(self.reported or {}).get("vers"),
         )
 

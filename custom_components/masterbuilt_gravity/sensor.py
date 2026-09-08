@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -21,13 +21,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import MasterbuiltConfigEntry
-from .const import TARGET_OFF, active_errors, error_text
+from .const import active_errors, brand_traits, error_text, target_or_none
 from .entity import MasterbuiltEntity
 
 
 def _heat_target(r: dict[str, Any]) -> Any:
-    val = r.get("heat", {}).get("t2", {}).get("trgt")
-    return None if val is None or val == TARGET_OFF else val
+    return target_or_none(r.get("heat", {}).get("t2", {}).get("trgt"))
 
 
 def _probe_temp(n: int) -> Callable[[dict[str, Any]], Any]:
@@ -145,15 +144,37 @@ DIAGNOSTIC_SENSORS: tuple[MbSensorDescription, ...] = (
 )
 
 
+def _for_brand(
+    descriptions: tuple[MbSensorDescription, ...], brand: str | None
+) -> tuple[MbSensorDescription, ...]:
+    """Rename heat intensity where the brand calls it something else.
+
+    heat.t2.intensity drives the fan, and Kamado Joe presents it as fan speed
+    rather than heat intensity. Only the translation key and icon change: the
+    description key is the unique_id suffix, so renaming that would orphan
+    every existing entity and lose its history.
+    """
+    key = brand_traits(brand)["intensity_key"]
+    if key == "heat_intensity":
+        return descriptions
+    return tuple(
+        replace(desc, translation_key=key, icon="mdi:fan")
+        if desc.key == "heat_intensity"
+        else desc
+        for desc in descriptions
+    )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: MasterbuiltConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
+    sensors = _for_brand(SENSORS, coordinator.brand)
     entities: list[MasterbuiltEntity] = []
     for mac in coordinator.devices:
-        for desc in (*SENSORS, *PROBE_SENSORS):
+        for desc in (*sensors, *PROBE_SENSORS):
             entities.append(MasterbuiltSensor(coordinator, mac, desc))
         for desc in DIAGNOSTIC_SENSORS:
             entities.append(MasterbuiltFreshnessSensor(coordinator, mac, desc))

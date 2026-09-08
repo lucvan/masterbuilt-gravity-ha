@@ -12,10 +12,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import MasterbuiltApi, MasterbuiltApiError, MasterbuiltAuthError
 from .const import (
+    CONF_BRAND,
     CONF_DEVICES,
     CONF_SCAN_INTERVAL,
     CONF_STALE_AFTER,
     CONF_TRACK_HISTORY,
+    DEFAULT_BRAND,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_STALE_AFTER,
     DOMAIN,
@@ -89,6 +91,7 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         )
         self.api = api
         self.entry = entry
+        self.brand = entry.data.get(CONF_BRAND, DEFAULT_BRAND)
         self.devices: dict[str, dict[str, Any]] = {}
         self.reported_at: dict[str, datetime | None] = {}
         self.cook: dict[str, dict[str, Any]] = {}
