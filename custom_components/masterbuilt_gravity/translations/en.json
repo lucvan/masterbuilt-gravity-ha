@@ -94,6 +94,7 @@
       "grill_temp": { "name": "Grill temperature" },
       "target_temp": { "name": "Target temperature" },
       "heat_intensity": { "name": "Heat intensity" },
+      "fan_speed": { "name": "Fan speed" },
       "rssi": { "name": "Signal strength" },
       "probe1_temp": { "name": "Probe 1 temperature" },
       "probe1_target": { "name": "Probe 1 target" },

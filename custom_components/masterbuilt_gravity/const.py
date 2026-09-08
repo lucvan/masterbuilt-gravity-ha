@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+from typing import Any
 
 DOMAIN = "masterbuilt_gravity"
 
@@ -16,20 +17,32 @@ DOMAIN = "masterbuilt_gravity"
 # ---------------------------------------------------------------------------
 DEFAULT_BRAND = "masterbuilt"
 
-BRANDS: dict[str, dict[str, str]] = {
+BRANDS: dict[str, dict[str, Any]] = {
     "masterbuilt": {
         "label": "Masterbuilt",
         "cas_base": "https://cas.masterbuilt.com",
+        "default_name": "Masterbuilt Gravity",
+        "default_model": "Gravity Series",
+        "has_hopper": True,
+        "intensity_key": "heat_intensity",
     },
     "kamado_joe": {
         "label": "Kamado Joe",
         "cas_base": "https://cas.kamadojoe.com",
+        "default_name": "Kamado Joe",
+        "default_model": "Konnected Joe",
+        # A Konnected Joe has no hopper, but still reports doorOpn -- always
+        # false -- so the sensor has to be dropped by brand. Probing the shadow
+        # for the key would keep it (#2). The same heat.t2.intensity value is
+        # fan speed on this grill, so it is named for what it is.
+        "has_hopper": False,
+        "intensity_key": "fan_speed",
     },
 }
 
 
-def _brand(brand: str | None) -> dict[str, str]:
-    """Resolve a brand slug.
+def brand_traits(brand: str | None) -> dict[str, Any]:
+    """Resolve a brand slug to its table entry.
 
     Config entries created before multi-brand support carry no brand key, so a
     missing or unrecognised slug has to resolve to Masterbuilt.
@@ -39,12 +52,12 @@ def _brand(brand: str | None) -> dict[str, str]:
 
 def cas_base(brand: str | None) -> str:
     """CAS REST host for a brand slug."""
-    return _brand(brand)["cas_base"]
+    return brand_traits(brand)["cas_base"]
 
 
 def brand_label(brand: str | None) -> str:
     """Display name for a brand slug."""
-    return _brand(brand)["label"]
+    return brand_traits(brand)["label"]
 
 # App-level key used as HTTP Basic auth for the unauthenticated login endpoint.
 _APP_KEY = (
@@ -91,6 +104,24 @@ ATTACH_POLICY_URL = (
 
 # Target temperature sentinel meaning "not set / off" (0 F == ~-17 C).
 TARGET_OFF = -17
+
+
+def target_or_none(value: Any) -> Any:
+    """A setpoint, or None when it means "no target set".
+
+    The grill expresses "off" in its own display unit, so the sentinel moves
+    with the unit: -17 in Celsius, confirmed on a grill reporting pwrOn false
+    (#2), which is 0 F carried across and rounded. A Fahrenheit grill therefore
+    reports a plain 0, and reading that literally puts "0 F" on the target
+    sensor instead of leaving it blank.
+
+    Both are treated as unset. 0 is not a valid target in either unit -- the
+    grills report a minimum of 65 C / 150 F -- and the probe helpers already
+    treat it that way, so this makes grill and probe handling agree.
+    """
+    if value is None or value == TARGET_OFF or value == 0:
+        return None
+    return value
 
 # The grill/app fire their "reached" notification a few degrees below the
 # setpoint (observed ~2 C; the exact offset isn't cleanly exposed). Applied to

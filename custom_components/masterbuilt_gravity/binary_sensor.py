@@ -15,7 +15,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import MasterbuiltConfigEntry
-from .const import active_errors, probe_present, probe_reached, target_reached
+from .const import (
+    active_errors,
+    brand_traits,
+    probe_present,
+    probe_reached,
+    target_reached,
+)
 from .entity import MasterbuiltEntity
 
 
@@ -91,10 +97,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
+    # A hopperless grill still reports doorOpn, permanently false, so the
+    # sensor cannot be dropped by probing the shadow for the key (#2).
+    descriptions = BINARY_SENSORS
+    if not brand_traits(coordinator.brand)["has_hopper"]:
+        descriptions = tuple(d for d in BINARY_SENSORS if d.key != "door_open")
     entities: list[MasterbuiltEntity] = [
         MasterbuiltBinarySensor(coordinator, mac, desc)
         for mac in coordinator.devices
-        for desc in (*BINARY_SENSORS, *PROBE_REACHED)
+        for desc in (*descriptions, *PROBE_REACHED)
     ]
     entities += [MasterbuiltStaleSensor(coordinator, mac) for mac in coordinator.devices]
     async_add_entities(entities)
