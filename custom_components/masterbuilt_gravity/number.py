@@ -41,7 +41,8 @@ async def async_setup_entry(
     for mac in coordinator.devices:
         entities.append(MasterbuiltGrillTarget(coordinator, mac))
         entities.extend(
-            MasterbuiltProbeTarget(coordinator, mac, n) for n in (1, 2, 3, 4)
+            MasterbuiltProbeTarget(coordinator, mac, n)
+            for n in range(1, coordinator.traits(mac)["probes"] + 1)
         )
     async_add_entities(entities)
 

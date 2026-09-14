@@ -59,6 +59,125 @@ def brand_label(brand: str | None) -> str:
     """Display name for a brand slug."""
     return brand_traits(brand)["label"]
 
+
+# ---------------------------------------------------------------------------
+# Model profiles.
+#
+# The shadow format is generic across Middleby grills, so a key being present
+# proves nothing about the hardware -- a Konnected Joe reports doorOpn with no
+# hopper to open. A profile records what one model is known to have, and the
+# entity set is narrowed to match.
+#
+# Profiles only ever narrow a grill that has been matched to one, by Automatic
+# or by hand. An unrecognised model code, and every grill set up before profiles
+# existed, gets the standard set: every probe slot and the brand's defaults.
+# Removing entities people already rely on is the failure this is built around.
+#
+# The Kamado Joe entries are from rellerton/kamado-joe-ha, shared for reuse.
+# Probe counts on its two provisional models come from Kamado Joe's product
+# documentation, not from observed hardware.
+# ---------------------------------------------------------------------------
+CONF_PROFILES = "profiles"
+PROFILE_AUTO = "auto"
+PROFILE_STANDARD = "standard"
+STANDARD_PROBES = 4
+PROBE_ENTITY_KEYS = ("temp", "target", "reached", "target_set")
+
+MODEL_PROFILES: dict[str, dict[str, Any]] = {
+    "C:G:P26:1:D": {
+        "brand": "masterbuilt",
+        "name": "Gravity Series 800",
+        # Observed rather than documented: across 39 recorded cooks on this
+        # grill only probe ports 1 and 2 ever reported. Everything else here was
+        # verified on the physical grill, including setpoint writes.
+        "probes": 2,
+        "has_hopper": True,
+        "intensity_key": "heat_intensity",
+        "validated": True,
+    },
+    "C:G:018:1:D": {
+        "brand": "kamado_joe",
+        "name": "Konnected Joe",
+        "probes": 3,
+        "has_hopper": False,
+        "intensity_key": "fan_speed",
+        "validated": True,
+    },
+    "C:G:024:1:D": {
+        "brand": "kamado_joe",
+        "name": "Big Konnected Joe",
+        "probes": 3,
+        "has_hopper": False,
+        "intensity_key": "fan_speed",
+        "validated": False,
+    },
+    "P:G:018:1:D": {
+        "brand": "kamado_joe",
+        "name": "Pellet Joe",
+        "probes": 2,
+        # A pellet grill has a hopper, but nothing shows its doorOpn is wired to
+        # one; a generic shadow key is not evidence of a sensor.
+        "has_hopper": False,
+        "intensity_key": "fan_speed",
+        "validated": False,
+    },
+}
+
+
+def model_profile_label(code: str) -> str:
+    """"Kamado Joe Konnected Joe (C:G:018:1:D)", flagged when provisional."""
+    profile = MODEL_PROFILES[code]
+    label = f"{BRANDS[profile['brand']]['label']} {profile['name']} ({code})"
+    return label if profile["validated"] else f"{label} — provisional"
+
+
+def grill_traits(brand: str | None, model: str | None, choice: str | None) -> dict[str, Any]:
+    """Resolve what one grill exposes from its profile choice.
+
+    ``choice`` is Automatic, Standard, or a model code. Anything that doesn't
+    resolve to a known profile -- no choice stored, an unrecognised detected
+    code, a code since dropped from the table -- gives the standard set, never
+    less.
+    """
+    base = brand_traits(brand)
+    standard = {
+        "profile": None,
+        "probes": STANDARD_PROBES,
+        "has_hopper": base["has_hopper"],
+        "intensity_key": base["intensity_key"],
+    }
+    if choice in (None, PROFILE_STANDARD):
+        return standard
+    code = model if choice == PROFILE_AUTO else choice
+    profile = MODEL_PROFILES.get(code or "")
+    if profile is None:
+        return standard
+    return {
+        "profile": code,
+        "probes": profile["probes"],
+        "has_hopper": profile["has_hopper"],
+        "intensity_key": profile["intensity_key"],
+    }
+
+
+def probe_number(key: str) -> int | None:
+    """The probe slot an entity key belongs to, or None."""
+    if key.startswith("probe") and key[5:6].isdigit():
+        return int(key[5])
+    return None
+
+
+def excluded_keys(traits: dict[str, Any]) -> set[str]:
+    """Entity keys a resolved profile leaves out, for exact registry cleanup."""
+    keys = {
+        f"probe{n}_{suffix}"
+        for n in range(traits["probes"] + 1, STANDARD_PROBES + 1)
+        for suffix in PROBE_ENTITY_KEYS
+    }
+    if not traits["has_hopper"]:
+        keys.add("door_open")
+    return keys
+
 # App-level key used as HTTP Basic auth for the unauthenticated login endpoint.
 _APP_KEY = (
     "XB7RVSq2IfoBO7894f6Vb4OVxlml0PIQBx~e:"
