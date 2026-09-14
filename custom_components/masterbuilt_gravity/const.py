@@ -87,10 +87,11 @@ MODEL_PROFILES: dict[str, dict[str, Any]] = {
     "C:G:P26:1:D": {
         "brand": "masterbuilt",
         "name": "Gravity Series 800",
-        # Observed rather than documented: across 39 recorded cooks on this
-        # grill only probe ports 1 and 2 ever reported. Everything else here was
-        # verified on the physical grill, including setpoint writes.
-        "probes": 2,
+        # Four ports, confirmed on the physical controller. Usage is not
+        # hardware: across 39 recorded cooks this grill only ever reported on
+        # ports 1 and 2, and a profile built from that would have hidden two
+        # real ports from every Gravity 800 on Automatic.
+        "probes": 4,
         "has_hopper": True,
         "intensity_key": "heat_intensity",
         "validated": True,
