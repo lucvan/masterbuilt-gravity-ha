@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import MasterbuiltApi, MasterbuiltApiError, MasterbuiltAuthError
@@ -24,8 +24,12 @@ from .const import (
     LAST_COOK_MAX_POINTS,
     THING_SALT,
 )
-from .control import MasterbuiltControl
 from .history import series_from_snapshots
+
+if TYPE_CHECKING:
+    # Type-only. A runtime import here would pull the control stack into every
+    # install, including read-only ones that must never run it.
+    from .control import MasterbuiltControl
 
 
 def thing_name_for(mac_address: str) -> str:
@@ -79,7 +83,13 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     ``self.last_cook`` maps macAddress -> previous completed cook, with series.
     """
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, api: MasterbuiltApi) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        api: MasterbuiltApi,
+        control: MasterbuiltControl | None = None,
+    ) -> None:
         options = entry.options
         super().__init__(
             hass,
@@ -102,15 +112,25 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.track_history = options.get(CONF_TRACK_HISTORY, True)
         self._selected: list[str] | None = options.get(CONF_DEVICES) or None
         self._powered: dict[str, bool] = {}
-        self.control = MasterbuiltControl(hass, entry.entry_id)
+        # None in read-only mode, where the control stack is never constructed.
+        self.control = control
+
+    def _control(self) -> MasterbuiltControl:
+        # The number platform is not set up without control, so this is a
+        # backstop, not the mechanism.
+        if self.control is None:
+            raise HomeAssistantError(
+                "Control is turned off for this grill. Enable it under Configure."
+            )
+        return self.control
 
     async def async_set_grill_target(self, mac: str, value: int) -> None:
         """Write a grill setpoint, then refresh so the UI reflects it."""
-        await self.control.async_set_grill_target(thing_name_for(mac), value)
+        await self._control().async_set_grill_target(thing_name_for(mac), value)
         await self.async_request_refresh()
 
     async def async_set_probe_target(self, mac: str, probe: int, value: int) -> None:
-        await self.control.async_set_probe_target(thing_name_for(mac), probe, value)
+        await self._control().async_set_probe_target(thing_name_for(mac), probe, value)
         await self.async_request_refresh()
 
     def is_stale(self, mac: str) -> bool:

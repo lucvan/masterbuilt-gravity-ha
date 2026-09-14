@@ -19,6 +19,8 @@ Writes take a different path: setpoints go to AWS IoT rather than the REST API, 
 
 The two grills differ in what they expose, and the integration adjusts: a Konnected Joe has no hopper, so its **Hopper door** sensor is not created at all, and the `heat.t2.intensity` value it shares with the Gravity Series is named **Fan speed** there, which is what it actually drives.
 
+If you want a Kamado Joe–only integration with no control code in it at all, [rellerton/kamado-joe-ha](https://github.com/rellerton/kamado-joe-ha) is derived from this one, deliberately read-only, and the two projects share findings. It makes one different call worth knowing about when choosing: it reports grill and probe temperatures as unknown whenever the grill says it is powered off, where this integration shows the last reported value and leaves freshness to the **Stale data** sensor.
+
 ## What you get
 
 | | |
@@ -28,7 +30,7 @@ The two grills differ in what they expose, and the integration adjusts: a Konnec
 | **Per-probe** | "At temperature" sensor per probe, with a tolerance offset matching the app's own notification behaviour |
 | **Diagnostics** | Signal strength, last reported, data age, **stale data** |
 | **History** | A downsampled current-cook series for charting, maintained in the integration |
-| **Control** | Settable **grill** and **probe** targets — see [Setting temperatures](#setting-temperatures) |
+| **Control** | Settable **grill** and **probe** targets, **opt-in** — new installs are [read-only](#read-only-mode) by default. See [Setting temperatures](#setting-temperatures) |
 
 ## Install
 
@@ -43,7 +45,8 @@ Requires Home Assistant 2024.11 or newer.
 1. **Pick your brand.** Masterbuilt or Kamado Joe — this selects which cloud host to sign in to, and nothing else.
 2. **Sign in** with the same email and password you use in that brand's mobile app. They are stored in Home Assistant's config entry and sent only to that manufacturer's own cloud.
 3. **Pick your grills.** If the account has more than one paired grill you choose which to add; a single grill is added automatically.
-4. If the cloud later rejects the password, Home Assistant raises its normal **reauthentication** prompt instead of silently failing — re-enter the password and it reconnects.
+4. **Choose read-only or control.** Read-only is the default; control adds settable grill and probe targets. See [Read-only mode](#read-only-mode).
+5. If the cloud later rejects the password, Home Assistant raises its normal **reauthentication** prompt instead of silently failing — re-enter the password and it reconnects.
 
 ### Options
 
@@ -54,6 +57,7 @@ Requires Home Assistant 2024.11 or newer.
 | Polling interval | 30 s | Cloud poll cadence |
 | Treat data as stale after | 300 s | Drives the **Stale data** sensor |
 | Track current-cook history | on | Turn off if you chart purely from Recorder |
+| Allow changing grill and probe targets | off for new installs, on for upgrades | See [Read-only mode](#read-only-mode) |
 
 ## Read this before you build automations
 
@@ -159,9 +163,26 @@ recorder:
 
 Excluding it does not affect the `get_cook_history` action.
 
+## Read-only mode
+
+**New installs are read-only by default.** Setup asks explicitly whether Home Assistant may change your grill, and the answer defaults to no. You can change it at any time under *Configure*.
+
+Read-only is a real mode, not a hidden setting. With control off, the integration:
+
+- signs in to the telemetry service and nothing else;
+- never imports its control code, so there is no Cognito sign-in, no certificate provisioning, and no connection to AWS IoT;
+- never sets up the `number` platform, so no setpoint entity exists for a person, an automation, or anything else to change;
+- removes any setpoint entities, and deletes any stored control certificate, left over from a time when control was on.
+
+That boundary is about **which code runs**, not which libraries are in memory. `boto3` and `pycognito` are loaded in every Home Assistant process regardless, because Home Assistant's own cloud client uses them; `paho-mqtt` is never loaded.
+
+**Upgrading from 0.7 or earlier keeps control on.** Existing installs were all created while setpoint controls shipped unconditionally, so they migrate with control enabled. Silently removing working controls on upgrade would be a poor way to introduce a safer default — turn it off under *Configure* if you prefer.
+
+Turning control off deletes the certificate Home Assistant holds; turning it back on mints a fresh one on the next setpoint change. The old certificate is not revoked on AWS's side, which the integration has no means to do.
+
 ## Setting temperatures
 
-Grill and probe targets are settable:
+Grill and probe targets are settable once control is enabled — see [Read-only mode](#read-only-mode):
 
 | Entity | |
 |---|---|
@@ -184,7 +205,7 @@ The chamber range comes from `heat.t2.min`/`max` in the grill's own shadow, so e
 
 ### Dependencies
 
-Writes pull in `boto3`, `pycognito`, and `paho-mqtt` (declared in the manifest; Home Assistant installs them automatically). They are used only for the control path — reads need none of them.
+The manifest declares `boto3`, `pycognito` and `paho-mqtt`, and Home Assistant installs them for every install, because requirements can't be conditional on an option. Only the control path uses them. In read-only mode none of that code runs and `paho-mqtt` is never imported; `boto3` and `pycognito` are in memory either way, since Home Assistant's own cloud client imports them.
 
 ## Reporting a problem
 

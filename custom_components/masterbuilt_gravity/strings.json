@@ -20,6 +20,13 @@
           "devices": "Grills"
         }
       },
+      "control": {
+        "title": "Grill control",
+        "description": "Choose whether Home Assistant may **change** your grill, or only **read** it.\n\n**Read-only** is the default. It signs in to the telemetry service and nothing else: it never creates the certificate that control needs, never connects to the control service, and adds no controls to Home Assistant.\n\n**Control** adds settable grill and probe targets. That means changing a live-fire appliance remotely, and it relies on credentials taken from the manufacturer's app, so it is the part most likely to stop working if they change their backend.\n\nYou can change this later under Configure.",
+        "data": {
+          "control": "Allow Home Assistant to change grill and probe targets"
+        }
+      },
       "reauth_confirm": {
         "title": "Sign in again",
         "description": "The cloud rejected the saved password for {email}. Enter it again to reconnect.",
@@ -45,12 +52,14 @@
         "data": {
           "scan_interval": "Polling interval",
           "stale_after": "Treat data as stale after",
-          "track_history": "Track current-cook history"
+          "track_history": "Track current-cook history",
+          "control": "Allow changing grill and probe targets"
         },
         "data_description": {
           "scan_interval": "How often to poll the grill's cloud.",
           "stale_after": "How long the grill can go without reporting before the Stale data sensor turns on. The grill can keep cooking while its WiFi drops out, so this is more trustworthy than the Power sensor.",
-          "track_history": "Records a downsampled series for the current cook, for charting. Turn off if you only chart from Recorder history."
+          "track_history": "Records a downsampled series for the current cook, for charting. Turn off if you only chart from Recorder history.",
+          "control": "Turning this off removes the target controls and deletes the stored control certificate, so nothing is left that could write. Turning it back on provisions a new certificate the next time a target is changed."
         }
       }
     }

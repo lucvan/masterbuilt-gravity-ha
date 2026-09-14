@@ -36,16 +36,16 @@ from .const import (
     COGNITO_CLIENT_SECRET,
     COGNITO_IDENTITY_POOL_ID,
     COGNITO_USER_POOL_ID,
-    DOMAIN,
     IOT_ATS_ENDPOINT,
+    IOT_STORAGE_VERSION,
     SVC_PASSWORD,
     SVC_USERNAME,
+    iot_store_key,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 _AMAZON_ROOT_CA_URL = "https://www.amazontrust.com/repository/AmazonRootCA1.pem"
-_STORAGE_VERSION = 1
 _MQTT_TIMEOUT = 12
 
 
@@ -59,7 +59,7 @@ class MasterbuiltControl:
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         self._hass = hass
         # One cert/device-id per config entry, persisted so we don't churn certs.
-        self._store: Store = Store(hass, _STORAGE_VERSION, f"{DOMAIN}.{entry_id}.iot")
+        self._store: Store = Store(hass, IOT_STORAGE_VERSION, iot_store_key(entry_id))
         self._creds: dict[str, str] | None = None  # {cert, key, device_id, root_ca}
 
     async def async_set_grill_target(self, thing_name: str, value: int) -> None:
