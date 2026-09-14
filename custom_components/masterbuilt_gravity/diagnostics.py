@@ -90,6 +90,11 @@ async def async_get_config_entry_diagnostics(
             "age_seconds": coordinator.age(mac),
             "current_cook": async_redact_data(coordinator.cook.get(mac) or {}, TO_REDACT),
             "last_cook": _summarise_last_cook(coordinator.last_cook.get(mac) or {}),
+            "profile": {
+                "choice": coordinator.profile_choices.get(mac, "standard"),
+                "detected_model": device.get("model"),
+                "resolved": coordinator.traits(mac),
+            },
         }
 
     return {

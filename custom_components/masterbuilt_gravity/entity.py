@@ -6,7 +6,7 @@ from typing import Any
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, brand_traits
+from .const import DOMAIN, MODEL_PROFILES, brand_traits
 from .coordinator import MasterbuiltCoordinator
 
 
@@ -21,11 +21,16 @@ class MasterbuiltEntity(CoordinatorEntity[MasterbuiltCoordinator]):
         self._attr_unique_id = f"{mac}_{key}"
         meta = coordinator.devices.get(mac, {})
         traits = brand_traits(coordinator.brand)
+        code = meta.get("model")
+        profile = MODEL_PROFILES.get(code or "")
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, mac)},
             name=meta.get("givenName") or traits["default_name"],
             manufacturer=traits["label"],
-            model=meta.get("model") or traits["default_model"],
+            # Naming is not narrowing: a recognised code gets its friendly name
+            # whatever profile the grill uses, with the raw code kept alongside.
+            model=profile["name"] if profile else (code or traits["default_model"]),
+            model_id=code,
             sw_version=(self.reported or {}).get("vers"),
         )
 

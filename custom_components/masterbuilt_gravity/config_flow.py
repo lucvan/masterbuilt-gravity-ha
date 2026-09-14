@@ -35,6 +35,7 @@ from .const import (
     CONF_DEVICES,
     CONF_EMAIL,
     CONF_PASSWORD,
+    CONF_PROFILES,
     CONF_SCAN_INTERVAL,
     CONF_STALE_AFTER,
     CONF_TRACK_HISTORY,
@@ -42,8 +43,14 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_STALE_AFTER,
     DOMAIN,
+    MODEL_PROFILES,
+    PROFILE_AUTO,
+    PROFILE_STANDARD,
     brand_label,
+    model_profile_label,
 )
+
+_PROFILE_FIELD = "profile"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,6 +99,54 @@ def _device_label(device: dict[str, Any], fallback: str) -> str:
     return f"{name} ({mac[-6:]})" if mac else name
 
 
+def _profile_name(code: str | None) -> str | None:
+    """"Kamado Joe Konnected Joe" for a recognised code, flagged if provisional."""
+    profile = MODEL_PROFILES.get(code or "")
+    if profile is None:
+        return None
+    name = f"{BRANDS[profile['brand']]['label']} {profile['name']}"
+    return name if profile["validated"] else f"{name} (provisional)"
+
+
+def _profile_schema(model: str | None, default: str) -> vol.Schema:
+    """One grill's profile picker: Automatic, Standard, then every known model."""
+    detected = _profile_name(model)
+    options = [
+        SelectOptionDict(
+            value=PROFILE_AUTO,
+            label=f"Automatic — {detected}" if detected
+            else "Automatic — model not recognised, keeps every entity",
+        ),
+        SelectOptionDict(
+            value=PROFILE_STANDARD, label="Standard — every probe slot, no model profile"
+        ),
+        *(
+            SelectOptionDict(value=code, label=model_profile_label(code))
+            for code in MODEL_PROFILES
+        ),
+    ]
+    # A stored choice that's no longer offered (a code dropped from the table)
+    # would fail validation on submit, so fall back to Standard.
+    if default not in {o["value"] for o in options}:
+        default = PROFILE_STANDARD
+    return vol.Schema(
+        {
+            vol.Required(_PROFILE_FIELD, default=default): SelectSelector(
+                SelectSelectorConfig(options=options, mode=SelectSelectorMode.DROPDOWN)
+            )
+        }
+    )
+
+
+def _profile_placeholders(device: dict[str, Any], fallback: str) -> dict[str, str]:
+    model = device.get("model")
+    return {
+        "grill": _device_label(device, fallback),
+        "model": model or "none",
+        "detected": _profile_name(model) or "not a recognised model",
+    }
+
+
 async def _async_fetch_devices(
     hass, email: str, password: str, brand: str = DEFAULT_BRAND
 ) -> list[dict[str, Any]]:
@@ -115,6 +170,8 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
         self._password: str | None = None
         self._devices: list[dict[str, Any]] = []
         self._selected: list[str] = []
+        self._profiles: dict[str, str] = {}
+        self._profile_queue: list[str] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -151,7 +208,7 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
                     if len(devices) == 1:
                         mac = devices[0].get("macAddress")
                         self._selected = [mac] if mac else []
-                        return await self.async_step_control()
+                        return await self._async_start_profiles()
                     return await self.async_step_device()
 
         return self.async_show_form(
@@ -164,7 +221,7 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
         """Choose which of several paired grills to bring into HA."""
         if user_input is not None:
             self._selected = [m for m in user_input[CONF_DEVICES] if m]
-            return await self.async_step_control()
+            return await self._async_start_profiles()
 
         fallback = f"{brand_label(self._brand)} grill"
         options = [
@@ -186,6 +243,28 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(step_id="device", data_schema=schema)
+
+    async def _async_start_profiles(self) -> ConfigFlowResult:
+        self._profile_queue = list(self._selected)
+        return await self.async_step_profile()
+
+    async def async_step_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """One screen per grill: the detected model code, Automatic by default."""
+        if user_input is not None:
+            self._profiles[self._profile_queue.pop(0)] = user_input[_PROFILE_FIELD]
+        if not self._profile_queue:
+            return await self.async_step_control()
+        mac = self._profile_queue[0]
+        device = next((d for d in self._devices if d.get("macAddress") == mac), {})
+        return self.async_show_form(
+            step_id="profile",
+            data_schema=_profile_schema(device.get("model"), PROFILE_AUTO),
+            description_placeholders=_profile_placeholders(
+                device, f"{brand_label(self._brand)} grill"
+            ),
+        )
 
     async def async_step_control(
         self, user_input: dict[str, Any] | None = None
@@ -214,7 +293,11 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_EMAIL: self._email,
                 CONF_PASSWORD: self._password,
             },
-            options={CONF_DEVICES: self._selected, CONF_CONTROL: control},
+            options={
+                CONF_DEVICES: self._selected,
+                CONF_PROFILES: self._profiles,
+                CONF_CONTROL: control,
+            },
         )
 
     async def async_step_reauth(
@@ -261,9 +344,62 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class MasterbuiltOptionsFlow(OptionsFlow):
-    """Polling cadence, staleness threshold, cook history, and control."""
+    """Settings, and each grill's model profile, behind a menu.
+
+    A menu rather than chained steps, so changing the polling interval never
+    means paging through a profile screen for every grill.
+    """
+
+    def __init__(self) -> None:
+        self._profiles: dict[str, str] = {}
+        self._queue: list[str] = []
 
     async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return self.async_show_menu(step_id="init", menu_options=["settings", "profiles"])
+
+    async def async_step_profiles(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        self._queue = list(self._grills())
+        return await self.async_step_profile()
+
+    async def async_step_profile(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        options = self.config_entry.options
+        stored = options.get(CONF_PROFILES) or {}
+        if user_input is not None:
+            self._profiles[self._queue.pop(0)] = user_input[_PROFILE_FIELD]
+        if not self._queue:
+            return self.async_create_entry(
+                data={**options, CONF_PROFILES: {**stored, **self._profiles}}
+            )
+        mac = self._queue[0]
+        device = self._grills()[mac]
+        return self.async_show_form(
+            step_id="profile",
+            # No stored choice means Standard: what the grill has been running.
+            data_schema=_profile_schema(
+                device.get("model"), stored.get(mac, PROFILE_STANDARD)
+            ),
+            description_placeholders=_profile_placeholders(
+                device, f"{brand_label(self.config_entry.data.get(CONF_BRAND))} grill"
+            ),
+        )
+
+    def _grills(self) -> dict[str, dict[str, Any]]:
+        """Grills with their metadata, from the running entry when it's loaded."""
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        if runtime is not None and runtime.devices:
+            return dict(runtime.devices)
+        return {
+            mac: {"macAddress": mac}
+            for mac in self.config_entry.options.get(CONF_DEVICES) or []
+        }
+
+    async def async_step_settings(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is not None:
@@ -302,4 +438,4 @@ class MasterbuiltOptionsFlow(OptionsFlow):
                 ): BooleanSelector(),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="settings", data_schema=schema)

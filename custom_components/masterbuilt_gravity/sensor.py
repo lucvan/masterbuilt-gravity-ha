@@ -21,7 +21,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import MasterbuiltConfigEntry
-from .const import active_errors, brand_traits, error_text, target_or_none
+from .const import active_errors, error_text, probe_number, target_or_none
 from .entity import MasterbuiltEntity
 
 
@@ -144,25 +144,26 @@ DIAGNOSTIC_SENSORS: tuple[MbSensorDescription, ...] = (
 )
 
 
-def _for_brand(
-    descriptions: tuple[MbSensorDescription, ...], brand: str | None
+def _for_grill(
+    descriptions: tuple[MbSensorDescription, ...], traits: dict[str, Any]
 ) -> tuple[MbSensorDescription, ...]:
-    """Rename heat intensity where the brand calls it something else.
+    """Shape the sensor set to one grill's resolved traits.
 
-    heat.t2.intensity drives the fan, and Kamado Joe presents it as fan speed
-    rather than heat intensity. Only the translation key and icon change: the
-    description key is the unique_id suffix, so renaming that would orphan
-    every existing entity and lose its history.
+    Drops probe slots beyond the grill's profile, and renames heat intensity
+    where the grill presents it as fan speed. Only the translation key and icon
+    change on a rename: the description key is the unique_id suffix, so
+    renaming that would orphan every existing entity and lose its history.
     """
-    key = brand_traits(brand)["intensity_key"]
-    if key == "heat_intensity":
-        return descriptions
-    return tuple(
-        replace(desc, translation_key=key, icon="mdi:fan")
-        if desc.key == "heat_intensity"
-        else desc
-        for desc in descriptions
-    )
+    rename = traits["intensity_key"]
+    shaped = []
+    for desc in descriptions:
+        n = probe_number(desc.key)
+        if n is not None and n > traits["probes"]:
+            continue
+        if desc.key == "heat_intensity" and rename != "heat_intensity":
+            desc = replace(desc, translation_key=rename, icon="mdi:fan")
+        shaped.append(desc)
+    return tuple(shaped)
 
 
 async def async_setup_entry(
@@ -171,10 +172,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    sensors = _for_brand(SENSORS, coordinator.brand)
     entities: list[MasterbuiltEntity] = []
     for mac in coordinator.devices:
-        for desc in (*sensors, *PROBE_SENSORS):
+        for desc in _for_grill((*SENSORS, *PROBE_SENSORS), coordinator.traits(mac)):
             entities.append(MasterbuiltSensor(coordinator, mac, desc))
         for desc in DIAGNOSTIC_SENSORS:
             entities.append(MasterbuiltFreshnessSensor(coordinator, mac, desc))

@@ -20,6 +20,13 @@
           "devices": "Grills"
         }
       },
+      "profile": {
+        "title": "Grill model",
+        "description": "**{grill}** reports model code `{model}`, which is {detected}.\n\nA model profile limits the entities to what that grill actually has, such as how many probe ports it has. **Automatic** uses the profile for the detected code, and keeps every entity when the code isn't recognised. Pick a profile yourself if detection gets it wrong, or **Standard** to keep every probe slot.\n\nYou can change this later under Configure.",
+        "data": {
+          "profile": "Model profile"
+        }
+      },
       "control": {
         "title": "Grill control",
         "description": "Choose whether Home Assistant may **change** your grill, or only **read** it.\n\n**Read-only** is the default. It signs in to the telemetry service and nothing else: it never creates the certificate that control needs, never connects to the control service, and adds no controls to Home Assistant.\n\n**Control** adds settable grill and probe targets. That means changing a live-fire appliance remotely, and it relies on credentials taken from the manufacturer's app, so it is the part most likely to stop working if they change their backend.\n\nYou can change this later under Configure.",
@@ -49,6 +56,13 @@
     "step": {
       "init": {
         "title": "Masterbuilt Gravity options",
+        "menu_options": {
+          "settings": "Polling, history and control",
+          "profiles": "Grill models"
+        }
+      },
+      "settings": {
+        "title": "Polling, history and control",
         "data": {
           "scan_interval": "Polling interval",
           "stale_after": "Treat data as stale after",
@@ -60,6 +74,13 @@
           "stale_after": "How long the grill can go without reporting before the Stale data sensor turns on. The grill can keep cooking while its WiFi drops out, so this is more trustworthy than the Power sensor.",
           "track_history": "Records a downsampled series for the current cook, for charting. Turn off if you only chart from Recorder history.",
           "control": "Turning this off removes the target controls and deletes the stored control certificate, so nothing is left that could write. Turning it back on provisions a new certificate the next time a target is changed."
+        }
+      },
+      "profile": {
+        "title": "Grill model",
+        "description": "**{grill}** reports model code `{model}`, which is {detected}.\n\nChoosing a profile with fewer probe ports removes the extra probe entities. **Standard** keeps every probe slot, as before model profiles existed.",
+        "data": {
+          "profile": "Model profile"
         }
       }
     }
