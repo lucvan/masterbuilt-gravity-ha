@@ -188,7 +188,7 @@ Every Middleby grill reports the same shadow format, so a field being present do
 
 | Model code | Grill | Probe ports | Hopper | Status |
 |---|---|---|---|---|
-| `C:G:P26:1:D` | Masterbuilt Gravity Series 800 | 2 | yes | Verified on hardware. Probe count observed: across 39 cooks only ports 1 and 2 ever reported |
+| `C:G:P26:1:D` | Masterbuilt Gravity Series 800 | 4 | yes | Verified on hardware |
 | `C:G:018:1:D` | Kamado Joe Konnected Joe | 3 | no | Verified on hardware |
 | `C:G:024:1:D` | Kamado Joe Big Konnected Joe | 3 | no | Provisional — from Kamado Joe's documentation |
 | `P:G:018:1:D` | Kamado Joe Pellet Joe | 2 | no | Provisional — from Kamado Joe's documentation |
