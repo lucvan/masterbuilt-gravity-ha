@@ -14,6 +14,7 @@ from .api import MasterbuiltApi, MasterbuiltApiError, MasterbuiltAuthError
 from .const import (
     CONF_BRAND,
     CONF_DEVICES,
+    CONF_PROFILES,
     CONF_SCAN_INTERVAL,
     CONF_STALE_AFTER,
     CONF_TRACK_HISTORY,
@@ -23,6 +24,7 @@ from .const import (
     DOMAIN,
     LAST_COOK_MAX_POINTS,
     THING_SALT,
+    grill_traits,
 )
 from .history import series_from_snapshots
 
@@ -111,6 +113,9 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         )
         self.track_history = options.get(CONF_TRACK_HISTORY, True)
         self._selected: list[str] | None = options.get(CONF_DEVICES) or None
+        # mac -> Automatic / Standard / model code. A grill with no entry is
+        # Standard, which is what every pre-profile install resolves to.
+        self.profile_choices: dict[str, str] = options.get(CONF_PROFILES) or {}
         self._powered: dict[str, bool] = {}
         # None in read-only mode, where the control stack is never constructed.
         self.control = control
@@ -132,6 +137,14 @@ class MasterbuiltCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     async def async_set_probe_target(self, mac: str, probe: int, value: int) -> None:
         await self._control().async_set_probe_target(thing_name_for(mac), probe, value)
         await self.async_request_refresh()
+
+    def traits(self, mac: str) -> dict[str, Any]:
+        """What this grill exposes, resolved from its model profile choice."""
+        return grill_traits(
+            self.brand,
+            self.devices.get(mac, {}).get("model"),
+            self.profile_choices.get(mac),
+        )
 
     def is_stale(self, mac: str) -> bool:
         """True when the grill has not reported within the staleness window."""

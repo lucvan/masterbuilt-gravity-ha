@@ -5,7 +5,7 @@ import importlib
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
@@ -18,6 +18,7 @@ from .const import (
     CONF_PASSWORD,
     DEFAULT_BRAND,
     IOT_STORAGE_VERSION,
+    excluded_keys,
     iot_store_key,
 )
 from .coordinator import MasterbuiltCoordinator
@@ -63,6 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MasterbuiltConfigEntry) 
 
     coordinator = MasterbuiltCoordinator(hass, entry, api, control)
     await coordinator.async_config_entry_first_refresh()
+    _async_remove_unprofiled_entities(hass, entry, coordinator)
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, _platforms(coordinator))
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
@@ -101,6 +103,27 @@ async def async_migrate_entry(hass: HomeAssistant, entry: MasterbuiltConfigEntry
 async def async_remove_entry(hass: HomeAssistant, entry: MasterbuiltConfigEntry) -> None:
     """Delete the stored control certificate along with the entry."""
     await Store(hass, IOT_STORAGE_VERSION, iot_store_key(entry.entry_id)).async_remove()
+
+
+@callback
+def _async_remove_unprofiled_entities(
+    hass: HomeAssistant, entry: MasterbuiltConfigEntry, coordinator: MasterbuiltCoordinator
+) -> None:
+    """Drop the entities a grill's model profile leaves out.
+
+    Only the probe slots and hopper sensor a profile excludes, matched by exact
+    unique_id. Deliberately never a sweep of "whatever setup didn't create",
+    which would delete working entities any time a platform failed to load.
+    """
+    stale = {
+        f"{mac}_{key}"
+        for mac in coordinator.devices
+        for key in excluded_keys(coordinator.traits(mac))
+    }
+    registry = er.async_get(hass)
+    for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if reg_entry.unique_id in stale:
+            registry.async_remove(reg_entry.entity_id)
 
 
 def _platforms(coordinator: MasterbuiltCoordinator) -> list[Platform]:

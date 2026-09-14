@@ -17,7 +17,7 @@ Middleby serves both brands from one backend behind per-brand hostnames — same
 
 Writes take a different path: setpoints go to AWS IoT rather than the REST API, and reach Masterbuilt-owned endpoints whichever brand you choose. That works on both, confirmed on a Konnected Joe (model `C:G:018:1:D`) in [#2](https://github.com/lucvan/masterbuilt-gravity-ha/issues/2).
 
-The two grills differ in what they expose, and the integration adjusts: a Konnected Joe has no hopper, so its **Hopper door** sensor is not created at all, and the `heat.t2.intensity` value it shares with the Gravity Series is named **Fan speed** there, which is what it actually drives.
+The two grills differ in what they expose, and the integration adjusts: a Konnected Joe has no hopper, so its **Hopper door** sensor is not created at all, and the `heat.t2.intensity` value it shares with the Gravity Series is named **Fan speed** there, which is what it actually drives. Differences below the brand level, such as how many probe ports a grill has, are handled by [model profiles](#model-profiles).
 
 If you want a Kamado Joe–only integration with no control code in it at all, [rellerton/kamado-joe-ha](https://github.com/rellerton/kamado-joe-ha) is derived from this one, deliberately read-only, and the two projects share findings. It makes one different call worth knowing about when choosing: it reports grill and probe temperatures as unknown whenever the grill says it is powered off, where this integration shows the last reported value and leaves freshness to the **Stale data** sensor.
 
@@ -45,12 +45,13 @@ Requires Home Assistant 2024.11 or newer.
 1. **Pick your brand.** Masterbuilt or Kamado Joe — this selects which cloud host to sign in to, and nothing else.
 2. **Sign in** with the same email and password you use in that brand's mobile app. They are stored in Home Assistant's config entry and sent only to that manufacturer's own cloud.
 3. **Pick your grills.** If the account has more than one paired grill you choose which to add; a single grill is added automatically.
-4. **Choose read-only or control.** Read-only is the default; control adds settable grill and probe targets. See [Read-only mode](#read-only-mode).
-5. If the cloud later rejects the password, Home Assistant raises its normal **reauthentication** prompt instead of silently failing — re-enter the password and it reconnects.
+4. **Confirm each grill's model.** Setup shows the model code the grill reports; Automatic is the default. See [Model profiles](#model-profiles).
+5. **Choose read-only or control.** Read-only is the default; control adds settable grill and probe targets. See [Read-only mode](#read-only-mode).
+6. If the cloud later rejects the password, Home Assistant raises its normal **reauthentication** prompt instead of silently failing — re-enter the password and it reconnects.
 
 ### Options
 
-*Settings → Devices & Services → Masterbuilt Gravity → Configure*
+*Settings → Devices & Services → Masterbuilt Gravity → Configure*, then **Polling, history and control** or **Grill models**.
 
 | Option | Default | Notes |
 |---|---|---|
@@ -58,6 +59,7 @@ Requires Home Assistant 2024.11 or newer.
 | Treat data as stale after | 300 s | Drives the **Stale data** sensor |
 | Track current-cook history | on | Turn off if you chart purely from Recorder |
 | Allow changing grill and probe targets | off for new installs, on for upgrades | See [Read-only mode](#read-only-mode) |
+| Grill models | Automatic for new installs, Standard for upgrades | Per grill — see [Model profiles](#model-profiles) |
 
 ## Read this before you build automations
 
@@ -179,6 +181,27 @@ That boundary is about **which code runs**, not which libraries are in memory. `
 **Upgrading from 0.7 or earlier keeps control on.** Existing installs were all created while setpoint controls shipped unconditionally, so they migrate with control enabled. Silently removing working controls on upgrade would be a poor way to introduce a safer default — turn it off under *Configure* if you prefer.
 
 Turning control off deletes the certificate Home Assistant holds; turning it back on mints a fresh one on the next setpoint change. The old certificate is not revoked on AWS's side, which the integration has no means to do.
+
+## Model profiles
+
+Every Middleby grill reports the same shadow format, so a field being present doesn't mean the grill has that hardware — a Konnected Joe reports a hopper door it doesn't have. A **model profile** records what a model actually has, and limits its entities to match.
+
+| Model code | Grill | Probe ports | Hopper | Status |
+|---|---|---|---|---|
+| `C:G:P26:1:D` | Masterbuilt Gravity Series 800 | 2 | yes | Verified on hardware. Probe count observed: across 39 cooks only ports 1 and 2 ever reported |
+| `C:G:018:1:D` | Kamado Joe Konnected Joe | 3 | no | Verified on hardware |
+| `C:G:024:1:D` | Kamado Joe Big Konnected Joe | 3 | no | Provisional — from Kamado Joe's documentation |
+| `P:G:018:1:D` | Kamado Joe Pellet Joe | 2 | no | Provisional — from Kamado Joe's documentation |
+
+Setup shows the model code each grill reports, and asks per grill:
+
+- **Automatic** — the default for new installs. Uses the matching profile, and keeps every entity when the code isn't in the table.
+- **A specific profile** — for when detection gets it wrong.
+- **Standard** — every probe slot, exactly as before profiles existed.
+
+**A profile never removes anything unless the grill has been matched to one.** An unrecognised model code gets Standard, and so does every install from before profiles existed — upgrading changes nothing. To opt in, use *Configure → Grill models*. Switching to a profile with fewer probe ports removes the extra probe entities; switching back restores them.
+
+The Kamado Joe profiles are from [rellerton/kamado-joe-ha](https://github.com/rellerton/kamado-joe-ha). If your grill isn't listed, attaching a [diagnostics download](#reporting-a-problem) to an issue is all it takes to add it.
 
 ## Setting temperatures
 
