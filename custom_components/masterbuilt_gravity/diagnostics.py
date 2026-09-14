@@ -98,6 +98,8 @@ async def async_get_config_entry_diagnostics(
             "cas_base": cas_base(brand),
             "data": async_redact_data(dict(entry.data), TO_REDACT),
             "options": dict(entry.options),
+            # What is actually in effect, not just what the option says.
+            "control_enabled": coordinator.control is not None,
         },
         "grill_count": len(coordinator.devices),
         "grills": grills,

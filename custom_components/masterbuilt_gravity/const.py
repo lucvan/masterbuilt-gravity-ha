@@ -102,6 +102,17 @@ ATTACH_POLICY_URL = (
     "http://masterbuiltaws-production.6k9fbw6cvt.us-west-2.elasticbeanstalk.com/aws/policy"
 )
 
+# Per-entry storage for the control certificate. Defined here, not in
+# control.py, so the integration can delete it without importing the control
+# stack: read-only mode must never load boto3 just to clean up after itself.
+IOT_STORAGE_VERSION = 1
+
+
+def iot_store_key(entry_id: str) -> str:
+    """Storage key holding one config entry's control certificate."""
+    return f"{DOMAIN}.{entry_id}.iot"
+
+
 # Target temperature sentinel meaning "not set / off" (0 F == ~-17 C).
 TARGET_OFF = -17
 
@@ -137,6 +148,7 @@ def _reached(current: float, target: float, fah: bool | None) -> bool:
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 
 CONF_BRAND = "brand"
+CONF_CONTROL = "control"
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 CONF_DEVICES = "devices"

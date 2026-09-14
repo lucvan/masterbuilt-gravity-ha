@@ -31,6 +31,7 @@ from .api import MasterbuiltApi, MasterbuiltApiError, MasterbuiltAuthError
 from .const import (
     BRANDS,
     CONF_BRAND,
+    CONF_CONTROL,
     CONF_DEVICES,
     CONF_EMAIL,
     CONF_PASSWORD,
@@ -101,15 +102,19 @@ async def _async_fetch_devices(
 
 
 class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Email/password onboarding, then pick which grills to add."""
+    """Sign in, pick grills, then choose read-only or control."""
 
     VERSION = 1
+    # 1.2: read-only mode. See async_migrate_entry for why older entries keep
+    # control on while new ones default to off.
+    MINOR_VERSION = 2
 
     def __init__(self) -> None:
         self._brand: str = DEFAULT_BRAND
         self._email: str | None = None
         self._password: str | None = None
         self._devices: list[dict[str, Any]] = []
+        self._selected: list[str] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -144,7 +149,9 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
                     self._password = user_input[CONF_PASSWORD]
                     self._devices = devices
                     if len(devices) == 1:
-                        return self._create(devices[0].get("macAddress"))
+                        mac = devices[0].get("macAddress")
+                        self._selected = [mac] if mac else []
+                        return await self.async_step_control()
                     return await self.async_step_device()
 
         return self.async_show_form(
@@ -156,7 +163,8 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Choose which of several paired grills to bring into HA."""
         if user_input is not None:
-            return self._create(*user_input[CONF_DEVICES])
+            self._selected = [m for m in user_input[CONF_DEVICES] if m]
+            return await self.async_step_control()
 
         fallback = f"{brand_label(self._brand)} grill"
         options = [
@@ -179,8 +187,25 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(step_id="device", data_schema=schema)
 
-    def _create(self, *macs: str | None) -> ConfigFlowResult:
-        selected = [m for m in macs if m]
+    async def async_step_control(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Read-only or control, asked explicitly and defaulting to read-only.
+
+        A separate step rather than a checkbox on the sign-in form: it is a
+        decision about letting Home Assistant change a live-fire appliance,
+        and it deserves its own screen and its own explanation.
+        """
+        if user_input is not None:
+            return self._create(user_input[CONF_CONTROL])
+        return self.async_show_form(
+            step_id="control",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_CONTROL, default=False): BooleanSelector()}
+            ),
+        )
+
+    def _create(self, control: bool) -> ConfigFlowResult:
         label = brand_label(self._brand)
         return self.async_create_entry(
             title=f"{label} ({self._email})" if self._email else label,
@@ -189,7 +214,7 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_EMAIL: self._email,
                 CONF_PASSWORD: self._password,
             },
-            options={CONF_DEVICES: selected},
+            options={CONF_DEVICES: self._selected, CONF_CONTROL: control},
         )
 
     async def async_step_reauth(
@@ -236,7 +261,7 @@ class MasterbuiltConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class MasterbuiltOptionsFlow(OptionsFlow):
-    """Polling cadence, staleness threshold, and cook-history tracking."""
+    """Polling cadence, staleness threshold, cook history, and control."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -270,6 +295,10 @@ class MasterbuiltOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_TRACK_HISTORY,
                     default=options.get(CONF_TRACK_HISTORY, True),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_CONTROL,
+                    default=options.get(CONF_CONTROL, False),
                 ): BooleanSelector(),
             }
         )
