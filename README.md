@@ -236,6 +236,18 @@ The manifest declares `boto3`, `pycognito` and `paho-mqtt`, and Home Assistant i
 
 Attach that to an issue. Most questions here come down to which keys a particular model reports and what unit their values are in, and the dump answers both without a round of guessing.
 
+## Development
+
+The tests run against a real Home Assistant through [pytest-homeassistant-custom-component](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component), with the cloud API mocked:
+
+```bash
+pip install -r requirements_test.txt
+pytest tests/test_readonly_isolation.py            # on its own: it inspects sys.modules
+pytest --ignore=tests/test_readonly_isolation.py
+```
+
+CI runs both on every push and pull request. They cover the setup flow, config-entry migration, turning control on and off, and model profiles, including an upgrade from the oldest entry shape in the wild.
+
 ## Credits
 
 - [Martin Hruška](https://github.com/hruskin) — original integration and CAS API reverse-engineering.
